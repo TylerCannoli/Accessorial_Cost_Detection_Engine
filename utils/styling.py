@@ -11,6 +11,8 @@ import streamlit as st
 from auth_utils import pace_role_is_admin
 
 # Sidebar: hide flow-only pages (still routable via st.switch_page).
+# Also hides the root "app" entry — app.py is the marketing landing page and
+# immediately redirects authenticated users, so it does not belong in the nav.
 _HIDE_FLOW_NAV_CSS = """
 [data-testid="stSidebarNav"] a[href*="Login"],
 [data-testid="stSidebarNav"] a[href*="login"],
@@ -26,6 +28,12 @@ _HIDE_FLOW_NAV_CSS = """
 [data-testid="stSidebarNav"] li:has(> a[href*="loading"]),
 [data-testid="stSidebarNav"] li:has(> a[href*="Loading"]),
 [data-testid="stSidebarNav"] li:has(> a[href*="_loading"]) {
+    display: none !important;
+}
+
+/* Hide the root app.py nav entry — authenticated users are immediately
+   redirected away from it, so showing it as "app" in the sidebar is confusing. */
+[data-testid="stSidebarNav"] li:first-child {
     display: none !important;
 }
 """

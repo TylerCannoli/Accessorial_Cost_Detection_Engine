@@ -54,8 +54,8 @@ if not MODEL_READY:
 
 if not API_ENABLED:
     st.info(
-        "Live FMCSA API enrichment is available in production mode. "
-        "On the cluster, predictions use Teradata historical data.",
+        "Running in standard mode — predictions use Teradata historical data. "
+        "Live FMCSA carrier enrichment activates when PACE_ENV=production is set.",
         icon="ℹ️"
     )
 
@@ -205,7 +205,8 @@ if st.session_state.get("dot_result") or st.session_state.get("dot_fmcsa_raw"):
             "HM Carrier":    combined.get("carrier_hm_ind", ""),
         }
         available = {k: v for k, v in profile_fields.items()
-                     if v and str(v) not in ("", "0", "UNKNOWN", "nan")}
+                     if v is not None
+                     and str(v).strip() not in ("", "0", "UNKNOWN", "nan", "None", "NaN", "N/A")}
         if available:
             st.divider()
             pcols = st.columns(min(len(available), 7))

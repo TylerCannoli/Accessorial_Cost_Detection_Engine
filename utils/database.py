@@ -427,7 +427,7 @@ def delete_pace_user(
 # FALLBACK / LOAD HELPERS
 # =============================================================================
 
-def load_shipments_from_teradata(row_limit: int = 10000) -> pd.DataFrame:
+def load_shipments_from_teradata(row_limit: int = 50000) -> pd.DataFrame:
     """
     Pull records from the Teradata training view and reshape them into the
     dashboard schema (same column names as get_shipments()).
@@ -456,6 +456,11 @@ def load_shipments_from_teradata(row_limit: int = 10000) -> pd.DataFrame:
                 carrier_phy_state,
                 sms_nbr_power_unit,
                 carrier_mcs150_mileage,
+                carrier_power_units,
+                carrier_total_drivers,
+                carrier_carrier_operation,
+                carrier_status_code,
+                carrier_fleetsize,
                 accessorial_risk_score,
                 accessorial_type
             FROM {td_db}.{td_view}
@@ -510,6 +515,44 @@ def load_shipments_from_teradata(row_limit: int = 10000) -> pd.DataFrame:
         df["Revenue"]         = df["base_freight_usd"]
         df["AccessorialFlag"] = (df["risk_score"] >= 40).astype(int)
 
+        return df
+
+    except Exception:
+        return pd.DataFrame()
+
+
+def load_teradata_for_inference(row_limit: int = 5000) -> pd.DataFrame:
+    """
+    Pull full-schema PACE records from Teradata for live inference without requiring
+    a file upload.  Returns all columns from pace_training_v so the inference engine
+    can score them directly via predict_dataframe().
+
+    Falls back to an empty DataFrame (and logs nothing) if Teradata is unavailable,
+    so the caller can handle the fallback gracefully.
+    """
+    try:
+        td_host = os.getenv("TD_HOST", "")
+        td_user = os.getenv("TD_USERNAME", "")
+        td_pass = os.getenv("TD_PASSWORD", "")
+        td_db   = os.getenv("TD_DATABASE", "CTGAN")
+
+        if not td_host:
+            return pd.DataFrame()
+
+        import teradatasql  # cluster-only dependency; imported lazily
+        conn = teradatasql.connect(
+            host=td_host, user=td_user,
+            password=td_pass, database=td_db,
+        )
+
+        # pace_training_v contains all PACE schema columns + computed labels
+        query = f"""
+            SELECT TOP {row_limit} *
+            FROM {td_db}.pace_training_v
+            ORDER BY insp_year DESC, insp_month DESC
+        """  # nosec B608
+        df = pd.read_sql(query, conn)
+        conn.close()
         return df
 
     except Exception:

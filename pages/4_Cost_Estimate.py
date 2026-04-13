@@ -457,16 +457,6 @@ with form_col:
 
         st.markdown("#### Refinement Filters")
 
-        dot_number = st.text_input(
-            "DOT Number",
-            value="",
-            placeholder="Optional — e.g. 1234567",
-            help=(
-                "Used to refine the historical training subset before building the "
-                "cost model. It is not a direct Random Forest input feature."
-            ),
-        )
-
         origin_city = st.selectbox(
             "Origin",
             options=[""] + origin_options,
@@ -486,7 +476,7 @@ with form_col:
         # Build filtered training set live from current refinement filters.
         filtered_training_df, training_scope = _build_training_subset(
             base_model_df,
-            dot_number=_normalize_dot_series(pd.Series([dot_number])).iloc[0],
+            dot_number="",
             origin_city=origin_city,
             destination_city=destination_city,
         )
@@ -515,17 +505,16 @@ with form_col:
         with st.expander("ℹ️ Model Info", expanded=False):
             st.markdown(
                 f"""
-**Model:** Random Forest Regressor  
-**Target:** `total_cost_usd`  
-**Direct input features:** `carrier`, `facility`, `weight_lbs`, `miles`  
-**Refinement filters:** `dot_number`, `origin_city`, `destination_city`  
-**Training scope:** {training_scope}  
-**Training rows:** {len(train_model_df):,}  
-**Unique carriers:** {train_model_df['carrier'].nunique():,}  
-**Unique facilities:** {train_model_df['facility'].nunique():,}  
-**Origin selected:** {_fmt_filter_value(origin_city)}  
-**Destination selected:** {_fmt_filter_value(destination_city)}  
-**DOT selected:** {_fmt_filter_value(_normalize_dot_series(pd.Series([dot_number])).iloc[0])}
+**Model:** Random Forest Regressor
+**Target:** `total_cost_usd`
+**Direct input features:** `carrier`, `facility`, `weight_lbs`, `miles`
+**Refinement filters:** `origin_city`, `destination_city`
+**Training scope:** {training_scope}
+**Training rows:** {len(train_model_df):,}
+**Unique carriers:** {train_model_df['carrier'].nunique():,}
+**Unique facilities:** {train_model_df['facility'].nunique():,}
+**Origin selected:** {_fmt_filter_value(origin_city)}
+**Destination selected:** {_fmt_filter_value(destination_city)}
 """
             )
 
@@ -533,7 +522,7 @@ with form_col:
 # Run cost prediction
 # -------------------------------------------------------------------
 if estimate_clicked:
-    clean_dot = _normalize_dot_series(pd.Series([dot_number])).iloc[0]
+    clean_dot = ""
 
     X_pred = pd.DataFrame(
         [
@@ -677,10 +666,9 @@ with result_col:
 
         with st.container(border=True):
             st.markdown("#### Active Refinement Filters")
-            f1, f2, f3 = st.columns(3)
-            f1.metric("DOT Number", _fmt_filter_value(_safe_str(r.get("dot_number", ""))))
-            f2.metric("Origin", _fmt_filter_value(_safe_str(r.get("origin_city", ""))))
-            f3.metric(
+            f1, f2 = st.columns(2)
+            f1.metric("Origin", _fmt_filter_value(_safe_str(r.get("origin_city", ""))))
+            f2.metric(
                 "Destination",
                 _fmt_filter_value(_safe_str(r.get("destination_city", ""))),
             )
@@ -693,6 +681,81 @@ with result_col:
             b1.metric("Historical Avg Cost", f"${hist_avg_cost:,.2f}")
             b2.metric("Historical Avg Cost / Mile", f"${hist_avg_cpm:,.2f}")
             b3.metric("Fleet Avg Cost / Mile", f"${fleet_avg_cpm:,.2f}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Summary Analysis ──────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("#### Summary Analysis")
+
+            # Variance from historical average
+            hist_delta = pred_cost - hist_avg_cost if hist_avg_cost > 0 else 0.0
+            hist_delta_pct = (hist_delta / hist_avg_cost * 100) if hist_avg_cost > 0 else 0.0
+            fleet_delta_pct = ((est_cpm - fleet_avg_cpm) / fleet_avg_cpm * 100) if fleet_avg_cpm > 0 else 0.0
+
+            # Risk language
+            if hist_delta_pct > 15:
+                cost_sentiment = "significantly above"
+                cost_color = "#F87171"
+                rec = (
+                    "Consider negotiating rate caps or booking with an alternative carrier. "
+                    "Review accessorial history and request a morning appointment window to reduce detention risk."
+                )
+            elif hist_delta_pct > 5:
+                cost_sentiment = "moderately above"
+                cost_color = "#FCD34D"
+                rec = (
+                    "Add a 10–15% accessorial buffer to your quote. "
+                    "Confirm appointment type and facility hours to minimize delays."
+                )
+            elif hist_delta_pct < -5:
+                cost_sentiment = "below"
+                cost_color = "#34D399"
+                rec = (
+                    "This estimate looks favorable. Verify lane availability and lock in the rate. "
+                    "Standard operating procedure applies — no additional buffer needed."
+                )
+            else:
+                cost_sentiment = "in line with"
+                cost_color = "#34D399"
+                rec = (
+                    "This estimate is consistent with historical performance. "
+                    "Proceed with standard quoting — no additional buffer needed."
+                )
+
+            lane_desc = ""
+            if _safe_str(r.get("origin_city")) and _safe_str(r.get("destination_city")):
+                lane_desc = f" on the **{r['origin_city']} → {r['destination_city']}** lane"
+            elif _safe_str(r.get("origin_city")):
+                lane_desc = f" from **{r['origin_city']}**"
+
+            summary_html = (
+                f"<div style='font-size:14px;line-height:1.7;color:#E2E8F0;'>"
+                f"The model estimates a total shipment cost of "
+                f"<span style='font-weight:700;color:#A78BFA;'>${pred_cost:,.2f}</span> "
+                f"for <span style='font-weight:700;color:#E2E8F0;'>{_safe_str(r.get('carrier',''))}</span>"
+                f"{lane_desc} "
+                f"({_safe_float(r.get('weight_lbs',0)):,.0f} lbs, "
+                f"{_safe_float(r.get('miles',0)):,.0f} mi). "
+                f"This is <span style='font-weight:700;color:{cost_color};'>"
+                f"{cost_sentiment} the historical average"
+                f"</span> of ${hist_avg_cost:,.2f} "
+                f"({'+' if hist_delta_pct >= 0 else ''}{hist_delta_pct:.1f}%), "
+                f"with a 95% confidence interval of "
+                f"<strong>${ci_low:,.2f} – ${ci_high:,.2f}</strong>. "
+                f"Cost per mile is estimated at ${est_cpm:,.2f} "
+                f"vs. a fleet average of ${fleet_avg_cpm:,.2f} "
+                f"({'+' if fleet_delta_pct >= 0 else ''}{fleet_delta_pct:.1f}%). "
+                f"Training was based on <strong>{training_rows:,} historical shipments</strong> "
+                f"({training_scope.lower()})."
+                f"</div>"
+                f"<div style='margin-top:12px;padding:10px 14px;"
+                f"background:rgba(147,51,234,0.12);border-left:3px solid #9333EA;"
+                f"border-radius:4px;font-size:13px;color:#CBD5E1;'>"
+                f"<strong>Recommendation:</strong> {rec}"
+                f"</div>"
+            )
+            st.markdown(summary_html, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 

@@ -7,6 +7,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+_TD_AVAILABLE = bool(os.getenv("TD_HOST", ""))
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
@@ -100,7 +102,11 @@ with st.expander("📋 Accepted Formats & Columns", expanded=False):
 st.divider()
 
 # ── Upload zone ───────────────────────────────────────────────────
-up_col, sample_col = st.columns([3, 1], gap="large")
+if _TD_AVAILABLE:
+    up_col, sample_col, td_col = st.columns([3, 1, 1], gap="medium")
+else:
+    up_col, sample_col = st.columns([3, 1], gap="large")
+    td_col = None
 
 with up_col:
     uploaded_file = st.file_uploader(
@@ -114,6 +120,37 @@ with sample_col:
     use_sample = st.button("Use sample data", type="secondary", use_container_width=True)
     st.caption("Loads 50 rows of mock PACE data")
 
+if td_col is not None:
+    with td_col:
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        load_teradata = st.button(
+            "Load from Teradata",
+            type="primary",
+            use_container_width=True,
+            help="Pull live Teradata records and score with PACE (no upload required)",
+        )
+        st.caption("Live inference on Teradata data")
+else:
+    load_teradata = False
+
+# ── Load from Teradata ────────────────────────────────────────────
+if load_teradata:
+    from utils.database import load_teradata_for_inference
+    with st.spinner("Connecting to Teradata and pulling records..."):
+        td_df = load_teradata_for_inference(row_limit=5000)
+    if td_df.empty:
+        st.error(
+            "Could not retrieve data from Teradata. "
+            "Check that TD_HOST is configured and pace_training_v is accessible."
+        )
+    else:
+        st.session_state["upload_raw_df"]  = td_df
+        st.session_state["upload_result"]  = None
+        st.session_state["upload_scored"]  = None
+        st.session_state["upload_source"]  = "teradata"
+        st.success(f"Loaded {len(td_df):,} records from Teradata.")
+        st.rerun()
+
 # ── Load sample ───────────────────────────────────────────────────
 if use_sample:
     from utils.mock_data import generate_mock_shipments
@@ -124,6 +161,7 @@ if use_sample:
     st.session_state["upload_raw_df"]      = sample
     st.session_state["upload_result"]      = None
     st.session_state["upload_scored"]      = None
+    st.session_state.pop("upload_source", None)
     st.rerun()
 
 # ── Parse uploaded file ───────────────────────────────────────────
@@ -143,6 +181,13 @@ if uploaded_file is not None:
 if st.session_state.get("upload_raw_df") is not None:
     raw_df   = st.session_state["upload_raw_df"]
     pipeline = get_data_pipeline()
+
+    if st.session_state.get("upload_source") == "teradata":
+        st.info(
+            f"Showing **{len(raw_df):,} live Teradata records** pulled from `pace_training_v`. "
+            "Click **Score with PACE →** to run inference.",
+            icon="🗄️",
+        )
 
     # ── AI Column Mapping ──────────────────────────────────────────────────────
     # Only shown when the static alias map still leaves unrecognized columns.

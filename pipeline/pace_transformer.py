@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-import teradatasql
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import (
     classification_report,
@@ -67,6 +66,7 @@ class HyperParameters:
 # ── Data loading ──────────────────────────────────────────────────
 def get_connection():
     """Return connection."""
+    import teradatasql  # cluster-only dependency; imported lazily so web deployments don't crash
     return teradatasql.connect(
         host=TD_HOST, user=TD_USERNAME,
         password=TD_PASSWORD, database=TD_DATABASE
