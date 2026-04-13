@@ -1,0 +1,2 @@
+run_timestamp,pmsa_rows,pmsa_ok,pmsa_err,bts_rd72-aq8r,stb_dwell_rows,stb_speed_rows,stb_cars_rows,elapsed_s
+2026-03-17 03:16 UTC,50,40,0,46,36529,24328,3838,86.7
