@@ -1,4 +1,4 @@
-# File: pages/6_Carrier_Comparison.py
+# File: pages/6_Carrier_Benchmarking.py
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,10 +8,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
 from utils.database import load_shipments_with_fallback
-from utils.styling import inject_css, sidebar_account, NAVY_500, NAVY_900
+from utils.styling import (
+    inject_css,
+    sidebar_account,
+    NAVY_500,
+    NAVY_900,
+    TIER_COLORS,
+    CHARGE_COLORS,
+)
+from pipeline.config import is_pace_model_ready
 
 st.set_page_config(
-    page_title="PACE — Carrier Comparison",
+    page_title="PACE — Carrier Benchmarking",
     page_icon="🚛",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -34,6 +42,18 @@ CARRIER_COLORS = [
 ]
 color_map = {c: CARRIER_COLORS[i % len(CARRIER_COLORS)]
              for i, c in enumerate(ALL_CARRIERS)}
+
+MODEL_READY = is_pace_model_ready()
+API_ENABLED = os.environ.get("PACE_ENV", "").lower() == "production"
+FMCSA_VIOLATION_LABELS = {
+    "basic_viol": "Basic Violations",
+    "unsafe_viol": "Unsafe Driving",
+    "fatigued_viol": "HOS/Fatigued",
+    "dr_fitness_viol": "Driver Fitness",
+    "subt_alcohol_viol": "Alcohol/Drug",
+    "vh_maint_viol": "Vehicle Maint.",
+    "hm_viol": "Hazmat",
+}
 
 
 
@@ -215,6 +235,188 @@ def _active_carriers_df(base_df: pd.DataFrame) -> pd.DataFrame:
     return base_df[base_df["carrier"].isin(active)]
 
 
+def _first_non_empty(series: pd.Series, default=None):
+    vals = series.dropna()
+    if vals.empty:
+        return default
+    for v in vals:
+        s = str(v).strip()
+        if s and s.lower() not in {"nan", "none"}:
+            return v
+    return default
+
+
+def _render_single_carrier_detail(carrier_df: pd.DataFrame, carrier_name: str) -> None:
+    """Render a lookup-style detail view for one selected carrier."""
+    base = carrier_df.iloc[0].to_dict() if not carrier_df.empty else {}
+    dot_number = _first_non_empty(carrier_df.get("dot_number", pd.Series(dtype=float)), None)
+    if dot_number is not None:
+        try:
+            dot_number = int(float(dot_number))
+        except Exception:
+            dot_number = None
+
+    result = {}
+    fmcsa_raw = {}
+    if MODEL_READY and dot_number is not None:
+        try:
+            from pipeline.inference import get_inference_engine
+
+            engine = get_inference_engine()
+            result = engine.predict_dot(dot_number=dot_number, origin_state=None) or {}
+        except Exception:
+            result = {}
+
+    if API_ENABLED and dot_number is not None:
+        try:
+            from pipeline.api_integration import get_enricher
+
+            enricher = get_enricher()
+            fmcsa_raw = enricher.fmcsa.build_realtime_features(dot_number) or {}
+        except Exception:
+            fmcsa_raw = {}
+
+    combined = {**base, **fmcsa_raw, **result}
+    score = float(combined.get("risk_score", 0) or 0)
+    label = combined.get("risk_label", combined.get("risk_tier", "Unknown"))
+    charge = combined.get("charge_type", "Unknown")
+    color = TIER_COLORS.get(label, "#94A3B8")
+    c_color = CHARGE_COLORS.get(charge, "#A78BFA")
+
+    with st.container(border=True):
+        h1, h2, h3 = st.columns([5, 1, 1])
+        with h1:
+            st.markdown(f"### {carrier_name}")
+            dot_txt = str(dot_number) if dot_number is not None else "N/A"
+            st.markdown(
+                f"<span style='color:#64748B;font-size:13px;'>USDOT {dot_txt}</span>",
+                unsafe_allow_html=True,
+            )
+        with h2:
+            src = combined.get("data_source", "historical")
+            src_color = "#34D399" if src == "live_fmcsa" else "#60A5FA"
+            src_label = "Live FMCSA" if src == "live_fmcsa" else "Historical"
+            st.markdown(
+                f"<div style='text-align:right;padding-top:8px;'>"
+                f"<span style='border:1px solid {src_color};color:{src_color};"
+                f"border-radius:4px;padding:3px 8px;font-size:11px;'>{src_label}</span></div>",
+                unsafe_allow_html=True,
+            )
+        with h3:
+            if label and label != "Unknown":
+                st.markdown(
+                    f"<div style='text-align:right;padding-top:8px;'>"
+                    f"<span style='border:1px solid {color};color:{color};"
+                    f"border-radius:4px;padding:3px 8px;font-size:11px;font-weight:700;'>{label}</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+        profile_fields = {
+            "Status": combined.get("carrier_status_code", ""),
+            "Operation": combined.get("carrier_carrier_operation", ""),
+            "Power Units": combined.get("carrier_power_units", ""),
+            "Total Drivers": combined.get("carrier_total_drivers", ""),
+            "State": combined.get("carrier_phy_state", ""),
+            "HM Carrier": combined.get("carrier_hm_ind", ""),
+        }
+        available = {
+            k: v
+            for k, v in profile_fields.items()
+            if v is not None and str(v).strip() not in ("", "0", "UNKNOWN", "nan", "None", "NaN", "N/A")
+        }
+        if available:
+            st.divider()
+            pcols = st.columns(min(len(available), 6))
+            for i, (lbl, val) in enumerate(available.items()):
+                with pcols[i]:
+                    st.markdown(f"**{lbl}**")
+                    st.write(str(val))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    left_col, right_col = st.columns([2, 3], gap="medium")
+
+    with left_col:
+        with st.container(border=True):
+            st.markdown("#### PACE Risk Score")
+            gauge_fig = go.Figure(
+                go.Indicator(
+                    mode="gauge+number",
+                    value=round(score, 1),
+                    number={"suffix": "%", "font": {"size": 34, "color": color}},
+                    title={"text": f"<b>{label} Risk</b>", "font": {"size": 14, "color": color}},
+                    gauge={
+                        "axis": {"range": [0, 100], "tickfont": {"color": "#94A3B8", "size": 10}},
+                        "bar": {"color": color, "thickness": 0.26},
+                        "bgcolor": "#0f0a1e",
+                        "borderwidth": 0,
+                    },
+                )
+            )
+            gauge_fig.update_layout(
+                height=220,
+                margin=dict(l=10, r=10, t=50, b=10),
+                paper_bgcolor="#0f0a1e",
+                font={"color": "#A78BFA"},
+            )
+            st.plotly_chart(gauge_fig, use_container_width=True)
+            st.markdown(
+                f"<div style='background:rgba(0,0,0,0.3);border:1px solid {c_color};"
+                f"border-radius:6px;padding:10px 14px;margin-top:4px;'>"
+                f"<div style='color:#94A3B8;font-size:10px;font-weight:600;letter-spacing:1px;"
+                f"text-transform:uppercase;margin-bottom:4px;'>Predicted Charge</div>"
+                f"<div style='color:{c_color};font-size:16px;font-weight:700;'>{charge}</div></div>",
+                unsafe_allow_html=True,
+            )
+
+    with right_col:
+        viol_data = {label_: int(float(combined.get(col, 0) or 0)) for col, label_ in FMCSA_VIOLATION_LABELS.items()}
+        with st.container(border=True):
+            st.markdown("#### Violation Profile")
+            o1, o2, o3 = st.columns(3)
+            with o1:
+                st.metric("OOS Total", int(float(combined.get("oos_total", 0) or 0)))
+            with o2:
+                st.metric("Driver OOS", int(float(combined.get("driver_oos_total", 0) or 0)))
+            with o3:
+                st.metric("Vehicle OOS", int(float(combined.get("vehicle_oos_total", 0) or 0)))
+            st.divider()
+            if any(v > 0 for v in viol_data.values()):
+                for k, v in sorted(viol_data.items(), key=lambda x: -x[1]):
+                    st.write(f"{k}: {v}")
+            else:
+                st.success("No violations on record.")
+
+    probs = combined.get("probabilities", {})
+    if probs:
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("#### Charge Type Probabilities")
+            prob_items = sorted(probs.items(), key=lambda x: x[1], reverse=True)
+            labels = [p[0] for p in prob_items]
+            values = [round(p[1] * 100, 1) for p in prob_items]
+            colors = [CHARGE_COLORS.get(l, "#A78BFA") for l in labels]
+            prob_fig = go.Figure(
+                go.Bar(
+                    x=values,
+                    y=labels,
+                    orientation="h",
+                    marker_color=colors,
+                    text=[f"{v:.1f}%" for v in values],
+                    textposition="outside",
+                )
+            )
+            prob_fig.update_layout(
+                margin=dict(l=0, r=60, t=8, b=0),
+                height=240,
+                plot_bgcolor="#0f0a1e",
+                paper_bgcolor="#0f0a1e",
+                font=dict(color="#A78BFA"),
+                xaxis=dict(ticksuffix="%", range=[0, 110], color="#94A3B8"),
+                yaxis=dict(color="#94A3B8", autorange="reversed"),
+            )
+            st.plotly_chart(prob_fig, use_container_width=True)
+
+
 # ── Expand dialogs (module-level) ─────────────────────────────────────────────
 @st.dialog("Avg Cost per Mile", width="large")
 def _popup_cpm():
@@ -316,8 +518,7 @@ if dot_search_clicked and dot_query.strip():
             st.warning(f"No carrier found for DOT {dot_int} in current dataset.")
     else:
         st.info(
-            f"DOT lookup requires uploaded PACE data with a `dot_number` column. "
-            f"Use **Carrier Lookup** (page 9) for live FMCSA lookup of DOT {dot_int}.",
+            f"DOT lookup requires uploaded PACE data with a `dot_number` column.",
             icon="ℹ️",
         )
 
@@ -346,19 +547,24 @@ with st.expander("⚙️ Manage Carriers", expanded=False):
 # ── Guard: need at least 1 carrier ───────────────────────────────────────────
 active_carriers = st.session_state["active_carriers"]
 if not active_carriers:
-    st.markdown("## Carrier Comparison")
+    st.markdown("## Carrier Benchmarking")
     st.warning("No carriers selected. Use the filter above to add carriers to the comparison.")
     st.stop()
 
 df = df_all[df_all["carrier"].isin(active_carriers)].copy()
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.markdown("## Carrier Comparison")
+st.markdown("## Carrier Benchmarking")
 st.caption(f"Comparing {len(active_carriers)} carrier{'s' if len(active_carriers) != 1 else ''} across cost, risk, and performance metrics.")
 st.divider()
 
 # ── Build carrier metrics table ───────────────────────────────────────────────
 metrics = _build_metrics(df)
+
+if len(active_carriers) == 1:
+    st.info("Single-carrier mode: showing lookup-style detail view.", icon="🔍")
+    _render_single_carrier_detail(df, active_carriers[0])
+    st.stop()
 
 # ── Summary metrics table ─────────────────────────────────────────────────────
 with st.container(border=True):

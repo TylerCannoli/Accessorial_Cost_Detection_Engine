@@ -282,6 +282,10 @@ button[kind="headerNoPadding"] {{
 [data-testid="stSidebarNavSeparator"] {{
     display: none !important;
 }}
+/* Force-hide Streamlit's "View more / View less" nav toggle. */
+[data-testid="stSidebarNavViewButton"] {{
+    display: none !important;
+}}
 @media (max-height: 680px) {{
     [data-testid="stSidebarContent"] {{
         overflow-y: auto !important;

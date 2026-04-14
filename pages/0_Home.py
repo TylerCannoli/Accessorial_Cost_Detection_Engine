@@ -192,7 +192,7 @@ if tier_sel != "All" and "risk_tier" in df.columns:
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown(f"## Welcome back, {display_name}")
-st.caption(f"Real-time visibility into your freight operations.")  
+st.caption("Real-time visibility into your freight operations.")
 st.divider()
 
 # ── KPI calculations ──────────────────────────────────────────────────────────
@@ -235,6 +235,75 @@ def _fmt_dollars(v: float) -> str:
     if v >= 1_000:
         return f"${v/1_000:.1f}K"
     return f"${v:,.0f}"
+
+
+# ── Quick navigation guide ────────────────────────────────────────────────────
+st.markdown("### Site Navigation")
+st.caption("Explore PACE's website map. A complete guide to our pages, including key features and capabilities.")
+
+nav_left, nav_right = st.columns(2, gap="medium")
+
+with nav_left:
+    st.markdown(
+        """
+        <div style="
+            background:#262244;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,0.18);
+            padding:16px 18px;
+            min-height:260px;
+            color:#FFFFFF;
+        ">
+            <div style="margin-bottom:14px;">
+                <div style="font-size:1.15rem;font-weight:700;line-height:1.2;">Upload</div>
+                <div style="margin-top:4px;opacity:0.95;">Upload data and run end-to-end accessorial cost risk scoring for new shipment files.</div>
+                <hr style="border:none;border-top:1px solid rgba(255,255,255,0.22);margin:10px 0 0 0;">
+            </div>
+            <div style="margin-bottom:14px;">
+                <div style="font-size:1.15rem;font-weight:700;line-height:1.2;">Shipments</div>
+                <div style="margin-top:4px;opacity:0.95;">Explore shipment-level detail, risk factors, and recommended actions.</div>
+                <hr style="border:none;border-top:1px solid rgba(255,255,255,0.22);margin:10px 0 0 0;">
+            </div>
+            <div>
+                <div style="font-size:1.15rem;font-weight:700;line-height:1.2;">Route Analysis</div>
+                <div style="margin-top:4px;opacity:0.95;">Compare lane performance across miles, cost, and risk metrics.</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with nav_right:
+    st.markdown(
+        """
+        <div style="
+            background:#262244;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,0.18);
+            padding:16px 18px;
+            min-height:260px;
+            color:#FFFFFF;
+        ">
+            <div style="margin-bottom:14px;">
+                <div style="font-size:1.15rem;font-weight:700;line-height:1.2;">Cost Estimate</div>
+                <div style="margin-top:4px;opacity:0.95;">Predict shipment cost with confidence intervals and feature impact.</div>
+                <hr style="border:none;border-top:1px solid rgba(255,255,255,0.22);margin:10px 0 0 0;">
+            </div>
+            <div style="margin-bottom:14px;">
+                <div style="font-size:1.15rem;font-weight:700;line-height:1.2;">Carrier Benchmarking</div>
+                <div style="margin-top:4px;opacity:0.95;">Compare carriers side-by-side; single carrier view shows deep DOT-style detail.</div>
+                <hr style="border:none;border-top:1px solid rgba(255,255,255,0.22);margin:10px 0 0 0;">
+            </div>
+            <div>
+                <div style="font-size:1.15rem;font-weight:700;line-height:1.2;">Accessorial Tracker</div>
+                <div style="margin-top:4px;opacity:0.95;">Monitor charge trends by type, carrier, and facility.</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ── Layout: charts left, KPI cards right ──────────────────────────────────────

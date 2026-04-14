@@ -159,7 +159,7 @@ def _step(msg: str, pct: int):
 # ── Pre-warm all caches ────────────────────────────────────────────────────────
 try:
     from utils.database import (
-        get_connection, verify_pace_user,
+        get_connection_safe, verify_pace_user,
         get_shipments, get_accessorial_charges,
         get_carriers, get_facilities, get_shipments_with_charges,
     )
@@ -169,7 +169,7 @@ try:
     _step("Connecting to database", 5)
     if time.time() - _load_start > _LOAD_TIMEOUT_SECS:
         raise TimeoutError("Loading timed out — falling back to demo data.")
-    conn = get_connection()
+    conn = get_connection_safe()
 
     # ── Verify non-fallback users against the DB ───────────────────────────────
     if st.session_state.get("role") == "pending":

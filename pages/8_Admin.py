@@ -9,7 +9,7 @@ from utils.database import (
     clear_db_cache,
     create_pace_user,
     delete_pace_user,
-    get_connection,
+    get_connection_safe,
     get_db_config_status,
     get_pace_users,
     test_connection,
@@ -38,7 +38,7 @@ if not pace_role_is_admin():                                     # ← your auth
 
 sidebar_account(username)
 
-conn = get_connection()
+conn = get_connection_safe()
 # ── DB status / retry ─────────────────────────────────────────────────────────
 db_ok_cfg, db_cfg_msg = get_db_config_status()
 

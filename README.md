@@ -87,9 +87,8 @@ CLS token
 | **Shipments** | Paginated explorer with per-shipment detail: risk gauge, factor breakdown, recommended actions |
 | **Cost Estimator** | RandomForest cost prediction with 95% CI, feature importance, historical comparison |
 | **Route Analysis** | Lane-level cost and risk metrics, miles vs cost scatter |
-| **Carrier Comparison** | Side-by-side benchmarking with radar chart |
+| **Carrier Benchmarking** | Side-by-side benchmarking with radar chart; single-carrier mode shows DOT-style deep details |
 | **Accessorial Tracker** | Charge trends over time, donut by type, carrier/facility breakdowns |
-| **Carrier Lookup** | DOT number → live FMCSA enrichment → instant risk score |
 | **Admin** | User management (CRUD), model training (incremental/full retrain), version rollback, risk threshold tuning |
 
 ---
@@ -133,15 +132,13 @@ Accessorial_Cost_Detection_Engine/
 │   ├── _Login.py                 # Login (underscore = hidden from sidebar nav)
 │   ├── _loading.py               # Post-login cache pre-warm + weight download
 │   ├── 0_Home.py                 # Home KPIs + charts
-│   ├── 1_Dashboard.py            # Risk dashboard
 │   ├── 2_Upload.py               # Batch upload & FT-Transformer scoring
 │   ├── 3_Shipments.py            # Shipment explorer + detail view
 │   ├── 4_Cost_Estimate.py        # RandomForest cost predictor
 │   ├── 5_Route_Analysis.py       # Lane/route metrics
-│   ├── 6_Carrier_Comparison.py   # Carrier benchmarking
+│   ├── 6_Carrier_Benchmarking.py # Carrier benchmarking
 │   ├── 7_Accessorial_Tracker.py  # Accessorial charge analytics
 │   ├── 8_Admin.py                # Admin panel (role-gated)
-│   └── 9_Carrier_Lookup.py       # DOT number lookup
 │
 ├── pipeline/
 │   ├── config.py                 # Column definitions, model paths, env config

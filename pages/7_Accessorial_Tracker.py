@@ -9,7 +9,7 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
-from utils.database import get_connection, get_shipments_with_charges
+from utils.database import get_connection_safe, get_shipments_with_charges
 from utils.mock_data import generate_mock_shipments
 from utils.styling import inject_css, sidebar_account, NAVY_500, TIER_COLORS, CHARGE_COLORS, RISK_HIGH_FG
 from pipeline.config import CHARGE_TYPE_LABELS, is_pace_model_ready
@@ -30,7 +30,7 @@ sidebar_account(username)
 MODEL_READY = is_pace_model_ready()
 
 # ── Load data ─────────────────────────────────────────────────────
-conn   = get_connection()
+conn   = get_connection_safe()
 df_raw = get_shipments_with_charges(conn) if conn is not None else pd.DataFrame()
 
 if df_raw.empty:

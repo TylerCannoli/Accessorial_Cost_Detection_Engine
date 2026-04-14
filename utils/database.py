@@ -568,7 +568,13 @@ def load_shipments_with_fallback(n_mock: int = 300) -> pd.DataFrame:
     """
     # ── Tier 1: Azure SQL ─────────────────────────────────────────────
     conn = get_connection_safe()
-    df   = get_shipments(conn) if conn is not None else pd.DataFrame()
+    df = get_shipments(conn) if conn is not None else pd.DataFrame()
+    # If Azure is waking from idle/serverless pause, first query can return empty.
+    # Retry once after cache clear before falling back.
+    if conn is not None and df.empty:
+        clear_db_cache()
+        conn = get_connection_safe()
+        df = get_shipments(conn) if conn is not None else pd.DataFrame()
     if not df.empty:
         return df
 
@@ -601,6 +607,10 @@ def load_accessorial_with_fallback(row_limit: int = 2000) -> pd.DataFrame:
 
     if conn is not None:
         df = get_shipments_with_charges(conn, row_limit=row_limit)
+        if df.empty:
+            clear_db_cache()
+            conn = get_connection_safe()
+            df = get_shipments_with_charges(conn, row_limit=row_limit) if conn is not None else pd.DataFrame()
         if not df.empty:
             return df
 
