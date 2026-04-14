@@ -53,13 +53,38 @@ with top_b:
 
 if conn is None:
     if not db_ok_cfg:
-        st.warning(f"Database unavailable. {db_cfg_msg}")
+        st.warning(f"Database unavailable — configuration incomplete. {db_cfg_msg}", icon="⚠️")
     else:
         ok, msg = test_connection()
         if not ok:
-            st.warning(msg)
+            # Strip verbose DB-Lib internals from the pymssql exception string and
+            # surface a concise, actionable message instead of the raw driver output.
+            import re as _re
+            _code_match = _re.search(r"\((\d+),", msg)
+            _code = _code_match.group(1) if _code_match else ""
+            if _code == "40613":
+                _clean = (
+                    "Azure SQL server is currently unavailable (serverless tier may be paused). "
+                    "Wait 30 s and click **Retry DB**, or resume the server in the Azure portal."
+                )
+            elif "connection failed" in msg.lower() or "adaptive server" in msg.lower():
+                _server = os.getenv("DB_SERVER", "")
+                _clean  = (
+                    f"Cannot reach SQL server `{_server or 'DB_SERVER not set'}`. "
+                    "Check firewall rules, server name, and that the server is running."
+                )
+            else:
+                # Fall back to first 180 chars — enough context without noise
+                _clean = msg[:180] + ("…" if len(msg) > 180 else "")
+            st.warning(_clean, icon="⚠️")
+            st.info(
+                "Verify `DB_SERVER`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` "
+                "environment variables on the host. If the Azure SQL instance uses the "
+                "serverless tier, the first connection after idle time can take 20–60 s.",
+                icon="💡",
+            )
 else:
-    st.success("Database connected.")
+    st.success("Database connected.", icon="✅")
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("## User Management")
 

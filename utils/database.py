@@ -584,6 +584,10 @@ def load_shipments_with_fallback(n_mock: int = 300) -> pd.DataFrame:
     # ── Tier 3: Mock data ─────────────────────────────────────────────
     from utils.mock_data import generate_mock_shipments
     df = generate_mock_shipments(n_mock)
+    # Mock data outputs risk_score in 0-1 range; normalize to 0-100 to match
+    # the DB schema so dashboard metrics display correctly (e.g. "60%" not "0.6%")
+    if "risk_score" in df.columns and df["risk_score"].max() <= 1.0:
+        df["risk_score"] = (df["risk_score"] * 100).round(1)
     st.info("Live database unavailable — showing demo data.", icon="ℹ️")
     return df
 

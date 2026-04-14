@@ -149,11 +149,14 @@ min_date = df_all["ship_date_dt"].min().date()
 max_date = df_all["ship_date_dt"].max().date()
 carriers = sorted(df_all["carrier"].unique())
 
+# Default to last 90 days so the delta KPIs compare that window to the prior period
+_default_start = max(min_date, (pd.Timestamp.today() - pd.Timedelta(days=90)).date())
+
 with st.expander("Filters", expanded=False):
     f1, f2, f3 = st.columns(3)
     with f1:
         date_range = st.date_input(
-            "Ship Date Range", value=(min_date, max_date),
+            "Ship Date Range", value=(_default_start, max_date),
             min_value=min_date, max_value=max_date, key="dash_date"
         )
     with f2:
@@ -185,24 +188,44 @@ avg_risk     = df["risk_score"].mean() if total else 0          # already 0-100 
 high_risk    = len(df[df["risk_tier"] == "High"])
 est_cost     = df["accessorial_charge_usd"].sum()
 
-total_delta     = total - len(df_all)
-avg_risk_delta  = (df["risk_score"].mean() - df_all["risk_score"].mean()) if total else 0
-high_risk_delta = high_risk - len(df_all[df_all["risk_tier"] == "High"])
-est_cost_delta  = est_cost - df_all["accessorial_charge_usd"].sum()
+# ── Period-over-period delta: compare current window to the same-length prior window ──
+if len(date_range) == 2:
+    _start_ts   = pd.Timestamp(date_range[0])
+    _end_ts     = pd.Timestamp(date_range[1])
+    _period_days = max(1, (_end_ts - _start_ts).days)
+    _prev_end    = _start_ts - pd.Timedelta(days=1)
+    _prev_start  = _prev_end - pd.Timedelta(days=_period_days)
+    df_prev = df_all[(df_all["ship_date_dt"] >= _prev_start) & (df_all["ship_date_dt"] <= _prev_end)]
+    if sel_carriers:
+        df_prev = df_prev[df_prev["carrier"].isin(sel_carriers)]
+    if sel_tiers:
+        df_prev = df_prev[df_prev["risk_tier"].isin(sel_tiers)]
+else:
+    df_prev = df_all.iloc[0:0]  # empty frame — no comparison possible
+
+_prev_total     = len(df_prev)
+_prev_avg_risk  = df_prev["risk_score"].mean() if _prev_total else 0
+_prev_high      = len(df_prev[df_prev["risk_tier"] == "High"])
+_prev_cost      = df_prev["accessorial_charge_usd"].sum()
+
+total_delta     = total - _prev_total
+avg_risk_delta  = (avg_risk - _prev_avg_risk) if total else 0
+high_risk_delta = high_risk - _prev_high
+est_cost_delta  = est_cost - _prev_cost
 
 def _fmt_usd(v: float) -> str:
     """Handle fmt usd."""
-    if v >= 1_000_000: return f"${v/1_000_000:.2f}M"
-    if v >= 1_000:     return f"${v/1_000:.1f}K"
+    if abs(v) >= 1_000_000: return f"${v/1_000_000:.2f}M"
+    if abs(v) >= 1_000:     return f"${v/1_000:.1f}K"
     return f"${v:,.0f}"
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
-    st.metric("Shipments",     f"{total:,}",            delta=f"{total_delta:+,} vs all")
+    st.metric("Shipments",     f"{total:,}",            delta=f"{total_delta:+,} vs prev period")
 with c2:
     st.metric("Avg Risk",      f"{avg_risk:.1f}%",      delta=f"{avg_risk_delta:+.1f}%")
 with c3:
-    st.metric("High Risk",     f"{high_risk:,}",        delta=f"{high_risk_delta:+,} vs all")
+    st.metric("High Risk",     f"{high_risk:,}",        delta=f"{high_risk_delta:+,} vs prev period")
 with c4:
     st.metric("Accessorial $", _fmt_usd(est_cost),      delta=_fmt_usd(est_cost_delta))
 
