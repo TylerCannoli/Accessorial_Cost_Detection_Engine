@@ -325,6 +325,22 @@ st.markdown(f"""
     position: fixed; inset: 0; z-index: 0; pointer-events: none;
 }}
 
+/* — CTA button row — sits below hero, flush with hero padding — */
+.pace-cta-row {{
+    padding: 0 clamp(1rem, 7vw, 56px);
+    margin-top: 36px;
+    position: relative; z-index: 5;
+    display: flex; align-items: center;
+}}
+/* Override Streamlit column gutters inside the CTA row */
+.pace-cta-row [data-testid="stColumns"] {{
+    gap: 0 !important;
+    margin: 0 !important;
+}}
+.pace-cta-row [data-testid="column"]:nth-child(2) > div > div > div {{
+    padding: 0 !important;
+}}
+
 /* — Footer — */
 .pace-footer {{
     border-top: 1px solid rgba(147,51,234,0.12);
@@ -499,7 +515,17 @@ st.markdown("""
     </div>
   </div>
 </section>
+""", unsafe_allow_html=True)
 
+# ── GET STARTED button — rendered here so it sits below the hero ──────────────
+st.markdown('<div class="pace-cta-row">', unsafe_allow_html=True)
+_, btn_col, _ = st.columns([1, 2, 1])
+with btn_col:
+    if st.button("GET STARTED →", type="primary", use_container_width=True, key="signin"):
+        st.switch_page("pages/_Login.py")
+st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown("""
 <div class="pace-div"></div>
 <div class="pace-feat-label">Platform capabilities</div>
 
@@ -587,8 +613,3 @@ if check_auth():
             "pages/8_Admin.py" if pace_role_is_admin() else "pages/0_Home.py"
         )
         st.switch_page("pages/_loading.py")
-
-_, btn_col, _ = st.columns([1, 2, 1])
-with btn_col:
-    if st.button("GET STARTED →", type="primary", use_container_width=True, key="signin"):
-        st.switch_page("pages/_Login.py")
