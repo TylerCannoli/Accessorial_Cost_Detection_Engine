@@ -608,6 +608,66 @@ if st.session_state.get("upload_raw_df") is not None:
                     )
                     st.plotly_chart(fig_hist, use_container_width=True)
 
+                # ── Per-class model confidence ─────────────────────
+                from pipeline.config import CHARGE_TYPE_LABELS as _CTL
+                _prob_cols = {
+                    label: f"prob_{label.lower().replace(' ', '_').replace('/', '_')}"
+                    for label in _CTL
+                }
+                _avail = {l: c for l, c in _prob_cols.items() if c in scored.columns}
+                if _avail:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("##### Per-Class Model Confidence")
+                    st.caption(
+                        "Average probability the model assigned to each charge type "
+                        "across all scored rows. Bars close to uniform indicate uncertainty; "
+                        "high peaks show strong model conviction."
+                    )
+                    _avg_probs = {l: float(scored[c].mean()) for l, c in _avail.items()}
+                    _CLASS_COLORS = {
+                        "No Charge":          "#34D399",
+                        "Detention":          "#F59E0B",
+                        "Safety Surcharge":   "#F87171",
+                        "Compliance Fee":     "#A78BFA",
+                        "Hazmat Fee":         "#60A5FA",
+                        "High Risk / Multiple": "#EC4899",
+                    }
+                    _labels = list(_avg_probs.keys())
+                    _values = [_avg_probs[l] for l in _labels]
+                    _colors = [_CLASS_COLORS.get(l, "#9333EA") for l in _labels]
+                    fig_conf = go.Figure(go.Bar(
+                        x=_labels,
+                        y=_values,
+                        marker_color=_colors,
+                        text=[f"{v:.1%}" for v in _values],
+                        textposition="outside",
+                        textfont={"color": "#E2E8F0", "size": 12},
+                    ))
+                    fig_conf.update_layout(
+                        margin=dict(l=0, r=0, t=10, b=0), height=260,
+                        plot_bgcolor="#0f0a1e", paper_bgcolor="#0f0a1e",
+                        font=dict(color="#A78BFA"),
+                        xaxis=dict(color="#94A3B8",
+                                   gridcolor="rgba(150,50,200,0.15)"),
+                        yaxis=dict(title="Avg Probability", color="#94A3B8",
+                                   gridcolor="rgba(150,50,200,0.15)",
+                                   tickformat=".0%", range=[0, max(_values) * 1.25]),
+                    )
+                    st.plotly_chart(fig_conf, use_container_width=True)
+
+            # ── Data lineage note ─────────────────────────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.info(
+                "**How risk scores are computed:** Risk scores (0–100) and charge type "
+                "predictions are produced by the PACE FT-Transformer, trained on FMCSA "
+                "carrier inspection and safety violation patterns. Scores reflect the "
+                "statistical likelihood of accessorial charges based on carrier safety "
+                "history, fuel market conditions, weather, and economic signals — not "
+                "from observed billing outcomes. Upload real accessorial invoices via "
+                "**Admin → Train from CSV** to calibrate against actual charge history.",
+                icon="ℹ️",
+            )
+
             # ── Download results ──────────────────────────────────
             st.divider()
             dl_col1, dl_col2 = st.columns(2)

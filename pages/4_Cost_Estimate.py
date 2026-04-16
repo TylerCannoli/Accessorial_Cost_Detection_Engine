@@ -353,12 +353,30 @@ def _fmt_filter_value(value: str) -> str:
 # -------------------------------------------------------------------
 shipments_df = load_shipments_with_fallback()
 
+# Detect whether live DB data or mock fallback is in use
+from utils.database import get_connection_safe as _get_conn_safe
+_db_live = _get_conn_safe() is not None
+
 st.markdown("## Cost Estimator")
 st.caption(
     "Estimate total shipment cost using the Random Forest cost model trained on "
     "historical shipment data. Clayton requested the estimator be refined using "
     "DOT, origin, and destination filters before model training."
 )
+
+if _db_live:
+    st.success(
+        "Cost model is trained on **live shipment data** from the connected database.",
+        icon="✅",
+    )
+else:
+    st.warning(
+        "Database unavailable — cost model is trained on **synthetic demo data**. "
+        "Cost estimates are directionally correct but not calibrated to your actual "
+        "shipment history. Connect Azure SQL and upload real shipments to calibrate.",
+        icon="⚠️",
+    )
+
 st.divider()
 
 # Ensure KPI-style metric labels/values wrap instead of truncating in narrow columns.

@@ -448,3 +448,122 @@ with col_versions:
             mc1, mc2 = st.columns(2)
             mc1.metric("F1 Score", f"{f1_val:.3f}"  if f1_val  else "—")
             mc2.metric("Accuracy", f"{acc_val:.3f}" if acc_val else "—")
+
+st.divider()
+
+# ── PACE FT-Transformer Model Metrics ─────────────────────────────────────────
+st.markdown("## PACE FT-Transformer — Model Card")
+st.caption(
+    "Metrics from the last full training run of the FT-Transformer (pace_transformer.pt). "
+    "These are separate from the lightweight risk model above."
+)
+
+import json as _json
+_tm_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "training_metrics.json")
+if os.path.exists(_tm_path):
+    with open(_tm_path) as _f:
+        _tm = _json.load(_f)
+
+    _test = _tm.get("test_metrics", {})
+    _hp   = _tm.get("hyperparams",  {})
+    _hist = _tm.get("history",      {})
+
+    # ── Top metrics ────────────────────────────────────────────────────────────
+    tm1, tm2, tm3, tm4 = st.columns(4)
+    with tm1:
+        with st.container(border=True):
+            st.markdown("<p style='color:#A78BFA;font-size:11px;font-weight:700;letter-spacing:1px;margin:0'>TEST MAE</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:28px;font-weight:700;margin:4px 0 0'>±{_test.get('test_mae', 0):.2f}</p>", unsafe_allow_html=True)
+            st.caption("Risk score error (0–100 scale)")
+    with tm2:
+        with st.container(border=True):
+            st.markdown("<p style='color:#A78BFA;font-size:11px;font-weight:700;letter-spacing:1px;margin:0'>TEST RMSE</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:28px;font-weight:700;margin:4px 0 0'>{_test.get('test_rmse', 0):.2f}</p>", unsafe_allow_html=True)
+            st.caption("Root mean squared error")
+    with tm3:
+        with st.container(border=True):
+            _acc_pct = _test.get('test_acc', 0) * 100
+            st.markdown("<p style='color:#A78BFA;font-size:11px;font-weight:700;letter-spacing:1px;margin:0'>CHARGE TYPE ACC</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:28px;font-weight:700;margin:4px 0 0'>{_acc_pct:.1f}%</p>", unsafe_allow_html=True)
+            st.caption("6-class charge classification")
+    with tm4:
+        with st.container(border=True):
+            st.markdown("<p style='color:#A78BFA;font-size:11px;font-weight:700;letter-spacing:1px;margin:0'>TRAINED AT</p>", unsafe_allow_html=True)
+            _trained_at = _tm.get("trained_at", "Unknown")
+            st.markdown(f"<p style='font-size:14px;font-weight:600;margin:4px 0 0'>{_trained_at}</p>", unsafe_allow_html=True)
+            st.caption(f"{_hp.get('epochs_run', '?')} epochs · {_hp.get('n_cat', '?')} cat + {_hp.get('n_cont', '?')} cont features")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Context note ────────────────────────────────────────────────────────────
+    st.info(
+        "**About these metrics:** The FT-Transformer was trained and evaluated on "
+        "**CTGAN-generated synthetic data** derived from real FMCSA inspection records. "
+        "High accuracy reflects performance within the synthetic distribution. "
+        "Real-world validation against live accessorial billing data is the next milestone — "
+        "upload production shipment data via the Upload page to begin building that ground truth.",
+        icon="ℹ️",
+    )
+
+    # ── Architecture summary ────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("#### Architecture")
+        a1, a2, a3, a4 = st.columns(4)
+        a1.metric("Layers",       _hp.get("n_layers",  "?"))
+        a2.metric("Attn Heads",   _hp.get("n_heads",   "?"))
+        a3.metric("Token Dim",    _hp.get("token_dim", "?"))
+        a4.metric("Batch Size",   _hp.get("batch_size","?"))
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── Charge type legend ──────────────────────────────────────────────────
+        st.markdown("**Predicted Charge Types (6 classes)**")
+        _charge_types = [
+            ("No Charge",          "#34D399", "Carrier has no predicted accessorial"),
+            ("Detention",          "#F59E0B", "Driver/truck held at facility beyond free time"),
+            ("Safety Surcharge",   "#F87171", "Elevated OOS or violation history"),
+            ("Compliance Fee",     "#A78BFA", "Regulatory or hours-of-service issues"),
+            ("Hazmat Fee",         "#60A5FA", "Hazardous materials handling required"),
+            ("High Risk / Multiple","#EC4899", "Multiple charge types likely; high overall risk"),
+        ]
+        _cols = st.columns(3)
+        for _idx, (_label, _color, _desc) in enumerate(_charge_types):
+            with _cols[_idx % 3]:
+                st.markdown(
+                    f"<div style='border:1px solid {_color};border-radius:6px;"
+                    f"padding:8px 12px;margin-bottom:8px;'>"
+                    f"<span style='color:{_color};font-weight:700;font-size:12px;'>{_label}</span>"
+                    f"<div style='color:#94A3B8;font-size:11px;margin-top:4px;'>{_desc}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
+    # ── Training curve ──────────────────────────────────────────────────────────
+    _val_losses = _hist.get("val_loss", [])
+    if _val_losses:
+        import plotly.graph_objects as _go
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("#### Training Curve")
+            _epochs = list(range(1, len(_val_losses) + 1))
+            _train_losses = _hist.get("train_loss", [])
+            _fig = _go.Figure()
+            if _train_losses:
+                _fig.add_scatter(x=_epochs, y=_train_losses, name="Train Loss",
+                                 line=dict(color="#9333EA", width=2))
+            _fig.add_scatter(x=_epochs, y=_val_losses, name="Val Loss",
+                             line=dict(color="#60A5FA", width=2))
+            _fig.update_layout(
+                height=250, margin=dict(l=0, r=0, t=20, b=0),
+                plot_bgcolor="#0f0a1e", paper_bgcolor="#0f0a1e",
+                font=dict(color="#A78BFA"),
+                xaxis=dict(title="Epoch", color="#94A3B8",
+                           gridcolor="rgba(150,50,200,0.15)"),
+                yaxis=dict(title="Loss", color="#94A3B8",
+                           gridcolor="rgba(150,50,200,0.15)"),
+                legend=dict(bgcolor="rgba(0,0,0,0)"),
+            )
+            st.plotly_chart(_fig, use_container_width=True)
+else:
+    st.info("Training metrics not found. Run the FT-Transformer training pipeline to generate `models/training_metrics.json`.", icon="ℹ️")

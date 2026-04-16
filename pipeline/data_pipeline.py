@@ -68,9 +68,7 @@ COLUMN_ALIASES = {
     "record_id":                "unique_id",
  
     # Carrier profile
-    "carrier":                  "carrier_status_code",
     "carrier_id":               "dot_number",
-    "carrier_name":             "carrier_status_code",
     "carrier_op":               "carrier_carrier_operation",
     "operation":                "carrier_carrier_operation",
     "fleet_size":               "carrier_fleetsize",
@@ -140,14 +138,6 @@ COLUMN_ALIASES = {
     "wind_speed":               "wx_avg_wind_mph",
     "wind":                     "wx_avg_wind_mph",
  
-    # Legacy schema mappings
-    "weight":                   "carrier_truck_units",   # proxy
-    "weight_lbs":               "carrier_truck_units",   # proxy
-    "miles":                    "carrier_mcs150_mileage", # proxy
-    "facility":                 "carrier_phy_state",     # proxy
-    "appointment_type":         "unit_type_desc",        # proxy
-    "base_freight_usd":         "carrier_recordable_crash_rate",  # proxy
-    "accessorial_charge_usd":   "oos_total",             # proxy
 }
  
 # ── Boolean columns that need True/False → Y/N conversion ────────

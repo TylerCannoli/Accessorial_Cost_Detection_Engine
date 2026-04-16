@@ -375,14 +375,19 @@ class PACEInference:
         On cluster: uses inputs as-is.
         """
         if API_ENRICHMENT_ENABLED:
-            enricher = get_enricher()
-            features = enricher.enrich_manual(
-                user_inputs=user_inputs,
-                origin_lat=origin_lat,
-                origin_lon=origin_lon,
-                origin_city=origin_city,
-                origin_state=origin_state,
-            )
+            try:
+                enricher = get_enricher()
+                features = enricher.enrich_manual(
+                    user_inputs=user_inputs,
+                    origin_lat=origin_lat,
+                    origin_lon=origin_lon,
+                    origin_city=origin_city,
+                    origin_state=origin_state,
+                )
+            except Exception as e:
+                import logging
+                logging.warning(f"PACE: Manual enrichment failed, using raw inputs: {e}")
+                features = dict(user_inputs)
         else:
             features = dict(user_inputs)
 
@@ -406,8 +411,12 @@ class PACEInference:
         print(f"Loaded {len(df):,} rows from {filepath}")
 
         if API_ENRICHMENT_ENABLED:
-            enricher = get_enricher()
-            df = enricher.enrich_dataframe(df)
+            try:
+                enricher = get_enricher()
+                df = enricher.enrich_dataframe(df)
+            except Exception as e:
+                import logging
+                logging.warning(f"PACE: CSV enrichment failed, scoring without live signals: {e}")
 
         results = self.predict(df)
 
@@ -432,8 +441,12 @@ class PACEInference:
         Streamlit pages after preprocessing).
         """
         if API_ENRICHMENT_ENABLED:
-            enricher = get_enricher()
-            df = enricher.enrich_dataframe(df)
+            try:
+                enricher = get_enricher()
+                df = enricher.enrich_dataframe(df)
+            except Exception as e:
+                import logging
+                logging.warning(f"PACE: API enrichment failed, scoring without live signals: {e}")
         return self.predict(df)
 
     # ── Model info ────────────────────────────────────────────────
