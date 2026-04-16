@@ -9,10 +9,12 @@ from utils.database import (
     clear_db_cache,
     create_pace_user,
     delete_pace_user,
+    get_carriers,
     get_connection_safe,
     get_db_config_status,
     get_pace_users,
     test_connection,
+    update_carrier_dot_number,
 )
 from utils.styling import inject_css, sidebar_account, ACCENT_SOFT, TEXT_PRIMARY, TEXT_SECONDARY
 import utils.model_config as mcfg
@@ -567,3 +569,57 @@ if os.path.exists(_tm_path):
             st.plotly_chart(_fig, use_container_width=True)
 else:
     st.info("Training metrics not found. Run the FT-Transformer training pipeline to generate `models/training_metrics.json`.", icon="ℹ️")
+
+st.divider()
+
+# ── Carrier DOT Numbers ────────────────────────────────────────────────────────
+st.markdown("## Carrier DOT Numbers")
+st.caption(
+    "Assign USDOT numbers to carriers stored in the database. "
+    "These are used by the Carrier Benchmarking page for DOT number search and FMCSA lookups."
+)
+
+if conn is None:
+    st.warning("Database unavailable — cannot manage carrier DOT numbers.", icon="⚠️")
+else:
+    carriers_df = get_carriers(conn)
+    if carriers_df.empty:
+        st.info("No carriers found in the Carriers table.", icon="ℹ️")
+    else:
+        # Normalize column names (case-insensitive)
+        carriers_df.columns = [c.lower() for c in carriers_df.columns]
+
+        dot_col, edit_col = st.columns([2, 1], gap="large")
+
+        with dot_col:
+            with st.container(border=True):
+                st.markdown("#### Current Carrier DOT Numbers")
+                display_cols = ["carrier_name", "dot_number"] if "dot_number" in carriers_df.columns else ["carrier_name"]
+                rename_map = {"carrier_name": "Carrier", "dot_number": "DOT Number"}
+                display_df = carriers_df[display_cols].rename(columns=rename_map).copy()
+                if "DOT Number" in display_df.columns:
+                    display_df["DOT Number"] = display_df["DOT Number"].fillna("—")
+                st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+        with edit_col:
+            with st.container(border=True):
+                st.markdown("#### Update DOT Number")
+                carrier_names = carriers_df["carrier_name"].dropna().tolist() if "carrier_name" in carriers_df.columns else []
+                if carrier_names:
+                    with st.form("update_dot_form"):
+                        selected_carrier = st.selectbox("Carrier", carrier_names)
+                        new_dot = st.text_input(
+                            "USDOT Number",
+                            placeholder="e.g. 72011",
+                            help="Enter the official USDOT number for this carrier. Leave blank to clear.",
+                        )
+                        save_clicked = st.form_submit_button("Save", type="primary", use_container_width=True)
+                        if save_clicked:
+                            ok, msg = update_carrier_dot_number(conn, selected_carrier, new_dot)
+                            if ok:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(f"Failed: {msg}")
+                else:
+                    st.info("No carriers available.")

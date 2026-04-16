@@ -501,8 +501,16 @@ if dot_search_clicked and dot_query.strip():
         st.stop()
 
     if _has_dot:
+        dot_str = str(dot_int)
         matched = (
-            df_raw[df_raw["dot_number"] == dot_int]["carrier"]
+            df_raw[
+                df_raw["dot_number"]
+                .astype(str)
+                .str.strip()
+                .str.split(".")
+                .str[0]  # handle "72011.0" float strings
+                == dot_str
+            ]["carrier"]
             .dropna()
             .unique()
             .tolist()

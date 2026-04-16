@@ -307,6 +307,30 @@ def get_carriers(_conn) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def update_carrier_dot_number(_conn, carrier_name: str, dot_number: str) -> Tuple[bool, str]:
+    """
+    Set or clear the dot_number for a carrier row identified by carrier_name.
+    dot_number should be a non-empty string like '72011', or None/'' to clear it.
+    Returns (success, message).
+    """
+    if _conn is None:
+        return False, "No database connection."
+    dot_val = str(dot_number).strip() if dot_number and str(dot_number).strip() else None
+    try:
+        cursor = _conn.cursor()
+        cursor.execute(
+            "UPDATE Carriers SET dot_number = %s WHERE carrier_name = %s",
+            (dot_val, carrier_name),
+        )
+        if cursor.rowcount == 0:
+            return False, f"No carrier found with name '{carrier_name}'."
+        _conn.commit()
+        clear_db_cache()
+        return True, f"DOT number updated for '{carrier_name}'."
+    except Exception as e:
+        return False, str(e)
+
+
 @st.cache_data(ttl=300)
 def get_facilities(_conn) -> pd.DataFrame:
     """Fetch all facility records."""

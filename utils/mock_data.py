@@ -60,17 +60,6 @@ CARRIER_PROFILES = {
     "Heartland Express":     {"detention_rate": 0.42, "detention_mult": 1.20, "safety": "Conditional",     "fleet":  3500},
 }
 
-# FMCSA USDOT numbers for mock carriers (real public registry numbers)
-CARRIER_DOT_MAP = {
-    "J.B. Hunt Transport":  72011,
-    "Schneider National":   95669,
-    "Werner Enterprises":   70270,
-    "XPO Logistics":        49704,
-    "Old Dominion Freight": 153474,
-    "FedEx Freight":        225868,
-    "Swift Transportation": 86457,
-    "Heartland Express":    51228,
-}
 
 # ── Facilities — realistic types with real dwell-time profiles ────────────────
 # Dwell times from industry studies: grocery DCs 3-6 hrs, retail 2-4 hrs, etc.
@@ -440,7 +429,7 @@ def generate_mock_shipments(n: int = 1000, seed: int = 42) -> pd.DataFrame:
         "accessorial_type":       accessorial_types,
         "avg_dwell_hrs":          facility_dwell,
         "carrier_safety":         carrier_safety,
-        "dot_number":             [CARRIER_DOT_MAP.get(c) for c in carrier_list],
+        "dot_number":             [None] * len(carrier_list),
     })
 
     return df.sort_values("ship_date", ascending=False).reset_index(drop=True)
