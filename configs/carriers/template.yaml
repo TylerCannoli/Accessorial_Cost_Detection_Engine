@@ -1,0 +1,126 @@
+# PACE Carrier Schema Configuration Template
+# ============================================
+# Copy this file to configs/carriers/<your_carrier_id>.yaml and fill it in.
+# Only field_map is required. Everything else is optional.
+#
+# MINIMUM REQUIRED FIELDS (after mapping):
+#   dot_number   — FMCSA DOT number (enables automatic FMCSA enrichment)
+#   report_state — 2-letter US state abbreviation (enables state enrichments)
+#   date field   — any date column (enables temporal features)
+#
+# If dot_number is provided, ~60% of model features are auto-populated
+# from FMCSA/FRED/EIA APIs. Only DOT + state + date are truly required.
+
+# ── Identity ──────────────────────────────────────────────────────
+carrier_id: your_carrier_id         # Unique identifier (used as filename)
+
+# ── Field Mapping ─────────────────────────────────────────────────
+# Map YOUR column names → PACE column names.
+# Columns not listed here are passed through unchanged.
+# Only include columns your data actually has.
+field_map:
+  # Examples — replace with your actual column names:
+  DOT_NUM:          dot_number
+  CARRIER_STATE:    report_state
+  SHIPMENT_DATE:    insp_date          # Will be parsed into year/month/day/dow
+  TRUCK_COUNT:      carrier_truck_units
+  DRIVER_COUNT:     carrier_total_drivers
+  CDL_DRIVERS:      carrier_total_cdl
+  FLEET_CLASS:      carrier_fleetsize
+  HAZMAT_FLAG:      carrier_hm_ind
+  SAFETY_RTG:       carrier_safety_rating
+  ORIGIN_STATE:     carrier_phy_state
+
+  # Cargo type flags (Y/N or 1/0 — see value_maps below)
+  GEN_FREIGHT:      carrier_crgo_genfreight
+  REEFER:           carrier_crgo_coldfood
+  HAZMAT:           carrier_crgo_chem
+
+# ── Date Parsing ──────────────────────────────────────────────────
+# Which column holds the shipment/inspection date.
+# If not set, defaults to "insp_date".
+date_column: SHIPMENT_DATE
+
+# strptime format string for the date. Leave blank to auto-detect.
+# Common formats:
+#   %Y-%m-%d   →  2024-03-15
+#   %m/%d/%Y   →  03/15/2024
+#   %Y%m%d     →  20240315
+#   %d-%b-%Y   →  15-Mar-2024
+date_format: "%m/%d/%Y"
+
+# ── State Column ──────────────────────────────────────────────────
+# If your state column maps to report_state via field_map, leave this blank.
+# If your state is in a different column that doesn't map to report_state,
+# set it here and it will be used as report_state automatically.
+state_column: CARRIER_STATE
+
+# ── DOT Number Column ─────────────────────────────────────────────
+# The PACE column name for DOT number after field_map is applied.
+# Usually "dot_number" — only change if your mapping uses a different target.
+dot_column: dot_number
+
+# ── Value Maps ────────────────────────────────────────────────────
+# Recode your categorical values to PACE-expected values.
+# Format: { pace_column: { your_value: pace_value } }
+value_maps:
+  # Carrier status: PACE uses "A" (Active), "I" (Inactive)
+  carrier_status_code:
+    ACTIVE:   A
+    INACTIVE: I
+    REVOKED:  I
+    "1":      A
+    "0":      I
+
+  # Cargo flags: PACE uses "Y" / "N"
+  carrier_crgo_genfreight:
+    "1":   Y
+    "0":   N
+    TRUE:  Y
+    FALSE: N
+    YES:   Y
+    NO:    N
+
+  carrier_crgo_coldfood:
+    "1":   Y
+    "0":   N
+    TRUE:  Y
+    FALSE: N
+    YES:   Y
+    NO:    N
+
+  carrier_crgo_chem:
+    "1":   Y
+    "0":   N
+    TRUE:  Y
+    FALSE: N
+    YES:   Y
+    NO:    N
+
+  # Hazmat indicator
+  carrier_hm_ind:
+    "1":   Y
+    "0":   N
+    TRUE:  Y
+    FALSE: N
+    YES:   Y
+    NO:    N
+
+  # Carrier operation codes
+  # PACE uses: A=Auth-for-hire, C=Contract, E=Exempt-for-hire,
+  #            H=Household goods, I=Indian tribe, L=Local govt,
+  #            M=Migrant, N=Fed govt, O=Owner-op, P=Private, S=State govt, X=Mixed
+  carrier_carrier_operation:
+    "FOR HIRE": A
+    "PRIVATE":  P
+    "CONTRACT": C
+    "EXEMPT":   E
+
+# ── Carrier-Specific Defaults ─────────────────────────────────────
+# Static values to inject for columns your data never provides.
+# Useful for carrier-wide constants (e.g., all their trucks are dry van).
+# PACE will fill remaining missing columns automatically with global defaults.
+defaults:
+  # carrier_phy_country: US
+  # unit_type_desc: TRUCK TRACTOR
+  # hazmat_placard_req: N

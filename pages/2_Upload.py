@@ -18,7 +18,7 @@ from pipeline.data_pipeline import get_data_pipeline
 from pipeline.config import CHARGE_TYPE_LABELS, is_pace_model_ready
 from utils.column_mapper import (
     get_column_mapper, find_unrecognized_columns,
-    PACE_TARGET_COLS, CONFIDENCE_HIGH, CONFIDENCE_MEDIUM,
+    CONFIDENCE_MEDIUM,
 )
 
 # ── Page config ───────────────────────────────────────────────────
@@ -189,187 +189,64 @@ if st.session_state.get("upload_raw_df") is not None:
             icon="🗄️",
         )
 
-    # ── AI Column Mapping ──────────────────────────────────────────────────────
-    # Only shown when the static alias map still leaves unrecognized columns.
+    # ── Auto Column Mapping ────────────────────────────────────────────────────
+    # Runs automatically on every new upload — no user action required.
+    # Unrecognized columns are mapped via semantic similarity and auto-applied.
+    # Anything still missing after mapping is filled by DataNormalizer at score time.
     _unrecognized = find_unrecognized_columns(raw_df)
 
     if _unrecognized:
-        # Reset mapping state when the file changes
-        if st.session_state.get("upload_unrecognized_cols") != _unrecognized:
-            st.session_state["upload_unrecognized_cols"]     = _unrecognized
-            st.session_state["upload_ai_suggestions"]        = {}
-            st.session_state["upload_col_mapping_confirmed"] = {}
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🤖 AI Column Mapping", expanded=True):
-            st.caption(
-                f"**{len(_unrecognized)} column(s)** were not recognized by the static alias map. "
-                "Use the AI mapper to get suggestions, then apply your confirmed mapping."
-            )
-
-            # ── Settings row ──────────────────────────────────────────────────
-            set_c1, set_c2, set_c3 = st.columns([2, 2, 1])
-            with set_c1:
-                ai_method = st.selectbox(
-                    "Mapping method",
-                    options=["semantic", "ollama"],
-                    index=0 if st.session_state.get("upload_ai_method", "semantic") == "semantic" else 1,
-                    key="ai_method_select",
-                    help="Semantic: offline cosine similarity (no install needed). "
-                         "Ollama: local LLM — requires `ollama serve` and a pulled model.",
+        _file_key = str(sorted(_unrecognized))
+        if st.session_state.get("_auto_mapped_key") != _file_key:
+            _mapper_inst = get_column_mapper()
+            _suggestions = _mapper_inst.map_columns(_unrecognized, method="semantic")
+            _to_apply = {
+                col: res["pace_col"]
+                for col, res in _suggestions.items()
+                if res["pace_col"] is not None and res["confidence"] >= CONFIDENCE_MEDIUM
+            }
+            if _to_apply:
+                st.session_state["upload_raw_df"] = (
+                    st.session_state["upload_raw_df"].rename(columns=_to_apply)
                 )
-                st.session_state["upload_ai_method"] = ai_method
-
-            with set_c2:
-                ollama_model = st.text_input(
-                    "Ollama model",
-                    value=st.session_state.get("upload_ollama_model", "llama3.2"),
-                    disabled=(ai_method != "ollama"),
-                    key="ollama_model_input",
-                )
-                st.session_state["upload_ollama_model"] = ollama_model
-
-            with set_c3:
-                st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                run_ai = st.button("Run AI Mapper", type="secondary", use_container_width=True)
-
-            # Ollama availability warning
-            if ai_method == "ollama":
-                _mapper_check = get_column_mapper()
-                _ok, _msg = _mapper_check.check_ollama(ollama_model)
-                if not _ok:
-                    st.warning(_msg, icon="⚠️")
-
-            # ── Run mapper ────────────────────────────────────────────────────
-            if run_ai:
-                _mapper_inst = get_column_mapper()
-                with st.spinner(f"Mapping {len(_unrecognized)} column(s) via {ai_method}…"):
-                    _suggestions = _mapper_inst.map_columns(
-                        _unrecognized, method=ai_method, ollama_model=ollama_model
-                    )
-                st.session_state["upload_ai_suggestions"]        = _suggestions
-                st.session_state["upload_col_mapping_confirmed"] = {}
-                st.session_state["upload_result"]                = None
+                st.session_state["upload_result"]     = None
+                st.session_state["upload_scored"]     = None
+            st.session_state["_auto_mapped_key"]      = _file_key
+            st.session_state["_auto_map_suggestions"] = _suggestions
+            st.session_state["_auto_map_applied"]     = _to_apply
+            if _to_apply:
                 st.rerun()
 
-            _suggestions = st.session_state.get("upload_ai_suggestions", {})
+    # ── Auto-mapping transparency (collapsed) ─────────────────────────────────
+    _suggestions = st.session_state.get("_auto_map_suggestions", {})
+    _applied     = st.session_state.get("_auto_map_applied", {})
+    _skipped     = [c for c, r in _suggestions.items() if r["confidence"] < CONFIDENCE_MEDIUM]
 
-            if not _suggestions:
-                st.info(
-                    f"Unrecognized columns: **{', '.join(_unrecognized)}**  \n"
-                    "Click **Run AI Mapper** to get suggestions.",
-                    icon="ℹ️",
+    if _suggestions:
+        with st.expander(
+            f"🔀 Auto-mapped {len(_applied)} column(s)"
+            + (f" · {len(_skipped)} unrecognized" if _skipped else ""),
+            expanded=False,
+        ):
+            if _applied:
+                st.caption("These columns were automatically renamed to match the PACE schema:")
+                _map_df = pd.DataFrame(
+                    [(orig, pace, f"{_suggestions[orig]['confidence']:.0%}")
+                     for orig, pace in _applied.items()],
+                    columns=["Your Column", "Mapped To", "Confidence"],
                 )
-            else:
-                # ── Confidence badge helper ───────────────────────────────────
-                def _conf_badge(conf: float) -> str:
-                    """Handle conf badge."""
-                    if conf >= CONFIDENCE_HIGH:
-                        return (
-                            "<span style='color:#34D399;font-size:11px;font-weight:700;"
-                            f"letter-spacing:.04em'>HIGH {conf:.0%}</span>"
-                        )
-                    elif conf >= CONFIDENCE_MEDIUM:
-                        return (
-                            "<span style='color:#FCD34D;font-size:11px;font-weight:700;"
-                            f"letter-spacing:.04em'>MED {conf:.0%}</span>"
-                        )
-                    return (
-                        "<span style='color:#F87171;font-size:11px;font-weight:700;"
-                        f"letter-spacing:.04em'>LOW {conf:.0%}</span>"
-                    )
+                st.dataframe(_map_df, hide_index=True, use_container_width=True)
 
-                # ── Auto-accept high-confidence button ────────────────────────
-                _high_cols = [
-                    col for col, res in _suggestions.items()
-                    if res["confidence"] >= CONFIDENCE_HIGH and res["pace_col"] is not None
-                ]
-                if _high_cols:
-                    _auto_c, _ = st.columns([3, 5])
-                    with _auto_c:
-                        if st.button(
-                            f"Auto-accept {len(_high_cols)} high-confidence mapping(s)",
-                            type="secondary",
-                        ):
-                            _confirmed = dict(
-                                st.session_state.get("upload_col_mapping_confirmed", {})
-                            )
-                            for _col in _high_cols:
-                                _confirmed[_col] = _suggestions[_col]["pace_col"]
-                            st.session_state["upload_col_mapping_confirmed"] = _confirmed
-                            st.rerun()
-
-                # ── Per-column dropdown table ─────────────────────────────────
+            if _skipped:
                 st.caption(
-                    "Review suggestions below. Use dropdowns to override. "
-                    "Select **(skip / ignore)** to leave a column unmapped."
+                    f"**{len(_skipped)} column(s) were not recognized** and will be excluded "
+                    "from scoring. Missing PACE features are auto-filled from enrichment "
+                    "data (carrier history, state lookups, freight rates)."
                 )
-                _pace_options = ["(skip / ignore)"] + sorted(PACE_TARGET_COLS)
-                _confirmed = dict(st.session_state.get("upload_col_mapping_confirmed", {}))
-
-                _hdr_a, _hdr_b, _hdr_c = st.columns([2, 3, 1])
-                with _hdr_a:
-                    st.markdown("**Your column**")
-                with _hdr_b:
-                    st.markdown("**Map to PACE column**")
-                with _hdr_c:
-                    st.markdown("**Confidence**")
-
-                for _col, _res in _suggestions.items():
-                    _row_a, _row_b, _row_c = st.columns([2, 3, 1])
-
-                    with _row_a:
-                        st.markdown(f"`{_col}`")
-
-                    with _row_b:
-                        _default = _confirmed.get(_col) or _res["pace_col"] or "(skip / ignore)"
-                        try:
-                            _default_idx = _pace_options.index(_default)
-                        except ValueError:
-                            _default_idx = 0
-
-                        _chosen = st.selectbox(
-                            label="",
-                            options=_pace_options,
-                            index=_default_idx,
-                            key=f"col_map_{_col}",
-                            label_visibility="collapsed",
-                        )
-                        _confirmed[_col] = _chosen if _chosen != "(skip / ignore)" else None
-
-                    with _row_c:
-                        st.markdown(_conf_badge(_res["confidence"]), unsafe_allow_html=True)
-
-                st.session_state["upload_col_mapping_confirmed"] = _confirmed
-
-                # ── Apply Mapping button ──────────────────────────────────────
-                st.divider()
-                _apply_c, _ = st.columns([2, 5])
-                with _apply_c:
-                    _apply_clicked = st.button(
-                        "Apply Mapping", type="primary", use_container_width=True
-                    )
-
-                if _apply_clicked:
-                    _to_apply = {
-                        old: new
-                        for old, new in st.session_state["upload_col_mapping_confirmed"].items()
-                        if new is not None
-                    }
-                    if _to_apply:
-                        _renamed = st.session_state["upload_raw_df"].rename(columns=_to_apply)
-                        st.session_state["upload_raw_df"]              = _renamed
-                        st.session_state["upload_result"]              = None
-                        st.session_state["upload_scored"]              = None
-                        st.session_state["upload_ai_suggestions"]      = {}
-                        st.session_state["upload_col_mapping_confirmed"] = {}
-                        st.session_state["upload_unrecognized_cols"]   = []
-                        st.success(
-                            f"Applied {len(_to_apply)} column mapping(s). Re-running pipeline…"
-                        )
-                        st.rerun()
-                    else:
-                        st.info("No mappings selected — proceeding with original column names.")
+                st.markdown(
+                    " · ".join(f"`{c}`" for c in _skipped),
+                    unsafe_allow_html=False,
+                )
 
     # ── Run pipeline if not already done ──────────────────────────────────────
     if st.session_state.get("upload_result") is None:
@@ -504,10 +381,12 @@ if st.session_state.get("upload_raw_df") is not None:
         if score_clicked and not errs and MODEL_READY:
             try:
                 from pipeline.inference import get_inference_engine
+                from pipeline.ingest.normalizer import DataNormalizer
                 engine = get_inference_engine()
 
                 with st.spinner(f"Scoring {pass_count:,} rows with PACE model..."):
-                    results_df = engine.predict_dataframe(df_clean)
+                    df_filled  = DataNormalizer().fill(df_clean)
+                    results_df = engine.predict_dataframe(df_filled)
 
                     # Combine with original identifiers
                     id_cols = [c for c in ["unique_id", "dot_number"]

@@ -347,7 +347,7 @@ def main():
     print("\nDone. Next step: retrain the FT-Transformer")
     print("  ssh ubuntu@131.186.6.189")
     print("  cd /home/ubuntu/PACE && git pull")
-    print("  # Edit pipeline/pace_transformer.py: change CONTINUOUS_COLUMNS to CONTINUOUS_COLUMNS_V2")
+    print("  # pipeline/pace_transformer.py already imports CONTINUOUS_COLUMNS_V2 as CONTINUOUS_COLUMNS")
     print("  python pipeline/pace_transformer.py")
 
 

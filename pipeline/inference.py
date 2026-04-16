@@ -433,6 +433,71 @@ class PACEInference:
 
         return df_out
 
+    # ── Input method 4: Carrier-Agnostic Normalized Input ─────────
+
+    def predict_carrier_data(
+        self,
+        df: pd.DataFrame,
+        carrier_id: str = None,
+        schema=None,
+        fill_missing: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Accept raw data from any carrier and normalize it to the PACE schema
+        before running inference.
+
+        Args:
+            df:           Raw carrier DataFrame (any column names/formats)
+            carrier_id:   Carrier identifier — loads configs/carriers/<id>.yaml
+            schema:       Pre-loaded CarrierSchema instance (alternative to carrier_id)
+            fill_missing: If True, auto-fill missing features using enrichment
+                          lookups and training-data medians (recommended).
+
+        Returns:
+            DataFrame with risk_score, charge_type, and probability columns.
+
+        Example:
+            engine = get_inference_engine()
+
+            # Using a saved carrier config
+            results = engine.predict_carrier_data(raw_df, carrier_id="acme_logistics")
+
+            # Using a passthrough schema (data already in PACE format)
+            results = engine.predict_carrier_data(normalized_df)
+        """
+        from pipeline.ingest.carrier_schema import normalize_carrier_data
+        from pipeline.ingest.normalizer import DataNormalizer
+
+        # Step 1 — map carrier field names to PACE names
+        normalized = normalize_carrier_data(df, carrier_id=carrier_id, schema=schema)
+
+        # Step 2 — fill missing features from enrichment lookups + medians
+        if fill_missing:
+            normalizer = DataNormalizer()
+            normalized = normalizer.fill(normalized)
+
+        # Step 3 — enrich with live API signals if in production mode
+        if API_ENRICHMENT_ENABLED:
+            try:
+                enricher = get_enricher()
+                normalized = enricher.enrich_dataframe(normalized)
+            except Exception as e:
+                import logging
+                logging.warning(f"PACE: API enrichment failed: {e}")
+
+        # Step 4 — run inference
+        results = self.predict(normalized)
+
+        # Prepend identifier columns from the original data
+        id_cols = [c for c in ["dot_number", "unique_id", "carrier_name"]
+                   if c in normalized.columns]
+        if id_cols:
+            results = pd.concat([normalized[id_cols].reset_index(drop=True),
+                                  results.reset_index(drop=True)], axis=1)
+
+        results["carrier_id"] = carrier_id or "unknown"
+        return results
+
     # ── Batch predict from DataFrame directly ─────────────────────
 
     def predict_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
