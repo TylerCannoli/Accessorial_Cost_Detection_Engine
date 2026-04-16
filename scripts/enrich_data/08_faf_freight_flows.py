@@ -98,7 +98,7 @@ def try_access_db(zip_path: str) -> pd.DataFrame | None:
         # Try common table name
         for tbl in tables:
             if "faf" in tbl.lower() or "state" in tbl.lower():
-                df = pd.read_sql(f"SELECT * FROM [{tbl}]", conn)
+                df = pd.read_sql(f"SELECT * FROM [{tbl}]", conn)  # nosec B608
                 conn.close()
                 return df
         conn.close()

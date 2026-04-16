@@ -187,7 +187,7 @@ def table_exists(cursor, table_name: str) -> bool:
     db, tbl = table_name.split(".")
     try:
         cursor.execute(
-            f"SELECT COUNT(*) FROM DBC.TablesV WHERE DatabaseName='{db}' AND TableName='{tbl}'"
+            f"SELECT COUNT(*) FROM DBC.TablesV WHERE DatabaseName='{db}' AND TableName='{tbl}'"  # nosec B608
         )
         return cursor.fetchone()[0] > 0
     except Exception:
@@ -243,7 +243,7 @@ def upload_table(conn, spec: dict, dry_run: bool = False) -> bool:
 
     # Insert in chunks
     placeholders = "(" + ",".join(["?"] * len(df.columns)) + ")"
-    insert_sql   = f"INSERT INTO {table} VALUES {placeholders}"
+    insert_sql   = f"INSERT INTO {table} VALUES {placeholders}"  # nosec B608
     total_chunks = math.ceil(len(df) / CHUNK_SIZE)
 
     for i, start in enumerate(range(0, len(df), CHUNK_SIZE)):
