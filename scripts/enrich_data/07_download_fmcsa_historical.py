@@ -5,44 +5,49 @@ Source : FMCSA SAFER Data Downloads (publicly available, no authentication requi
 Output : <PACE_DATA>/fmcsa_historical/inspection_YYYY.csv  (one file per year)
          <PACE_DATA>/fmcsa_historical/company_census_YYYY.csv
 
-FMCSA DATA PORTAL
------------------
-FMCSA publishes Motor Carrier Safety data at:
-  https://www.fmcsa.dot.gov/safety/data-and-statistics/downloads
+FMCSA DATA PORTAL — MANUAL DOWNLOAD REQUIRED
+---------------------------------------------
+FMCSA bulk inspection files (the same format as Vehicle_Inspection_File_NOT_SMS.csv
+you already have) are available through the FMCSA MCMIS bulk download portal.
+They require accepting a data use agreement through a web form — automated
+direct URL downloads are blocked by the portal.
 
-The Motor Carrier Census and Inspection data are released as large ZIP files.
-This script automates the download and extraction into a standard format
-matching the ctgan_input column schema.
+HOW TO DOWNLOAD THE HISTORICAL FILES
+-------------------------------------
+Option A — FMCSA MCMIS Bulk Data Downloads (recommended):
+  1. Go to: https://www.fmcsa.dot.gov/safety/data-and-statistics/downloads
+  2. Scroll to "Motor Carrier Inspection File" section
+  3. Select year (repeat for 2016, 2017, 2018, 2019, 2020, 2021, 2022)
+  4. Accept the data use agreement
+  5. Download the ZIP file
+  6. Save to: <PACE_DATA>/fmcsa_historical/raw/YYYY/inspection_YYYY.zip
+  7. Run: python 07_download_fmcsa_historical.py --local-only --years 2016 2017 ...
+
+Option B — Check if Teradata already has it:
+  The university Teradata may already have historical FMCSA inspection data
+  (your training pipeline was built from that Teradata data).
+  In Teradata Studio, run:
+    SELECT insp_year, COUNT(*) FROM CTGAN.ctgan_input GROUP BY insp_year ORDER BY 1;
+  If years 2016-2022 exist in ctgan_input, you already have the data — no
+  download needed.  Just extend the training view to include those years.
+
+Option C — FMCSA SAFER API (per-carrier, not bulk):
+  Register at: https://mobile.fmcsa.dot.gov/developer/
+  API key is free.  Use for individual carrier lookups at inference time,
+  not for bulk historical training data.
 
 WHAT THIS ADDS
 --------------
-Currently the model only trains on synthetic data derived from 2024-2025
-inspection records.  Adding 2016-2022 gives:
   - 8 additional years of carrier safety history
-  - Pre/post COVID freight pattern variation
+  - Pre/post COVID freight pattern variation (2020-2021 demand spikes)
   - 2017 ELD mandate impact on violation patterns
   - 2022 high-inflation / driver shortage period
   - Economic cycle diversity the model cannot learn from 2-year window
 
-HOW TO RUN
-----------
-    python 07_download_fmcsa_historical.py --years 2016 2017 2018 2019 2020 2021 2022
-    python 07_download_fmcsa_historical.py --years 2016 2022  # just two years as a test
-
-The script:
-  1. Downloads ZIP files from FMCSA public storage (~200-600 MB per year)
-  2. Extracts and normalises column names to match ctgan_input schema
-  3. Saves annual CSVs ready to merge with existing training data
-
-MANUAL DOWNLOAD (if automated download fails)
----------------------------------------------
-Go to: https://www.fmcsa.dot.gov/safety/data-and-statistics/downloads
-Download: "Motor Carrier Census Information File" and "Inspection File"
-Place them in: <PACE_DATA>/fmcsa_historical/raw/YYYY/
-Then re-run this script with --local-only flag.
-
-NOTE: FMCSA may require accepting a data use agreement on the portal.
-If automated requests are blocked, the --manual-only mode will guide you.
+HOW TO RUN AFTER DOWNLOADING
+-----------------------------
+    # Process downloaded files (no network access needed)
+    python 07_download_fmcsa_historical.py --local-only --years 2016 2017 2018 2019 2020 2021 2022
 """
 
 import os
