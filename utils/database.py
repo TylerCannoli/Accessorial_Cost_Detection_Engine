@@ -81,7 +81,7 @@ def get_connection():
                 password=password,
                 database=database,
                 port=1433,
-                login_timeout=20,
+                login_timeout=30,
                 tds_version="7.4",
             )
             # Smoke-test: ensure the connection is usable
@@ -90,7 +90,9 @@ def get_connection():
         except Exception as e:
             last_err = e
             if attempt < 3:
-                time.sleep(2)
+                # Azure SQL serverless can take 20-60 s to wake from idle;
+                # 12 s between retries gives it enough time across 3 attempts.
+                time.sleep(12)
 
     # All retries exhausted — fail silently, fallback to demo data
     return None
@@ -129,8 +131,8 @@ def test_connection() -> Tuple[bool, str]:
             password=_get_secret("DB_PASSWORD"),
             database=_get_secret("DB_DATABASE"),
             port=1433,
-            login_timeout=10,
-            timeout=15,
+            login_timeout=30,   # Azure serverless needs 20-60 s to wake
+            timeout=45,
             tds_version="7.4",
         )
         cur = conn.cursor()
