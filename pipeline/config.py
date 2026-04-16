@@ -107,6 +107,112 @@ CTGAN_DISCRETE_COLUMNS = CATEGORICAL_COLUMNS + [
     "is_holiday", "is_near_holiday",
 ]
 
+# ── Phase 2 enrichment columns ─────────────────────────────────────────
+# Added in Phase 2 retraining.  These are non-leaking predictors —
+# all available at carrier booking time, none derived from inspection outcomes.
+
+# Carrier-level historical OOS rates (from Vehicle_Inspection_NOT_SMS)
+CARRIER_HISTORY_COLUMNS = [
+    "carrier_hist_insp_count",
+    "carrier_hist_oos_rate",
+    "carrier_hist_driver_oos_rate",
+    "carrier_hist_vehicle_oos_rate",
+    "carrier_hist_hazmat_oos_rate",
+    "carrier_hist_avg_viol_per_insp",
+    "carrier_hist_driver_viol_rate",
+    "carrier_hist_vehicle_viol_rate",
+    "carrier_hist_hazmat_viol_rate",
+    "carrier_hist_post_acc_rate",
+]
+
+# FMCSA SMS BASIC percentile measures (from SMS_AB_PassProperty)
+SMS_PERCENTILE_COLUMNS = [
+    "sms_insp_total",
+    "sms_driver_insp_total",
+    "sms_driver_oos_insp_total",
+    "sms_vehicle_insp_total",
+    "sms_vehicle_oos_insp_total",
+    "sms_unsafe_driv_measure",
+    "sms_unsafe_driv_alert",
+    "sms_hos_measure",
+    "sms_hos_alert",
+    "sms_driv_fit_measure",
+    "sms_driv_fit_alert",
+    "sms_contr_subst_measure",
+    "sms_contr_subst_alert",
+    "sms_veh_maint_measure",
+    "sms_veh_maint_alert",
+    "sms_alert_count",
+    "sms_max_measure",
+]
+
+# State-level contextual features (parking, crash rates, detention propensity, freight)
+STATE_CONTEXT_COLUMNS = [
+    "state_parking_spots_total",
+    "state_parking_spots_per_100mi",
+    "state_parking_scarcity_index",
+    "state_fatal_crashes_2023",
+    "state_fatal_fatalities_2023",
+    "state_avg_fatals_per_crash",
+    "state_crashes_involving_trucks",
+    "state_fatal_crash_index",
+    "state_atri_detention_propensity",
+    "state_atri_severity_index",
+    "faf_state_freight_intensity",
+    "faf_state_hazmat_share",
+    "faf_state_reefer_share_faf",
+]
+
+# Market/freight condition signals (time-series, joined on insp_year + insp_month)
+MARKET_SIGNAL_COLUMNS = [
+    "lmi_composite_index",
+    "lmi_transportation_capacity",
+    "lmi_transportation_utilization",
+    "lmi_transportation_prices",
+    "ftsi_index",
+    "ppi_trucking_mom_pct",
+    "ftsi_yoy_pct",
+    "freight_tightness_score",
+    "atri_detention_freq_rate",
+    "atri_avg_detention_hours",
+    "atri_avg_detention_cost_usd",
+    "atri_cost_per_hour_usd",
+    "atri_reefer_multiplier",
+]
+
+# All new Phase 2 continuous columns (appended to CONTINUOUS_COLUMNS for retraining)
+PHASE2_NEW_COLUMNS = (
+    CARRIER_HISTORY_COLUMNS +
+    SMS_PERCENTILE_COLUMNS +
+    STATE_CONTEXT_COLUMNS +
+    MARKET_SIGNAL_COLUMNS
+)
+
+# Columns to REMOVE from model inputs in Phase 2 (direct target leakers).
+# These are per-inspection violation outcomes — not available at booking time.
+# They directly determine accessorial_type via the SQL CASE statement, causing
+# 100% classification accuracy (target leakage).
+LEAKING_COLUMNS = [
+    "oos_total",
+    "driver_oos_total",
+    "vehicle_oos_total",
+    "hazmat_oos_total",
+    "basic_viol",
+    "unsafe_viol",
+    "fatigued_viol",
+    "dr_fitness_viol",
+    "subt_alcohol_viol",
+    "vh_maint_viol",
+    "hm_viol",
+]
+
+# CONTINUOUS_COLUMNS for Phase 2 retraining:
+# Start with original, remove leakers, add new enrichment columns.
+CONTINUOUS_COLUMNS_V2 = (
+    [c for c in CONTINUOUS_COLUMNS if c not in LEAKING_COLUMNS] +
+    PHASE2_NEW_COLUMNS
+)
+
 # FT-Transformer settings
 MODEL_WEIGHTS_PATH = "models/pace_transformer.pt"
 MODEL_ARTIFACTS_PATH = "models/artifacts.pkl"

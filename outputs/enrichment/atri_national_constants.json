@@ -1,0 +1,9 @@
+{
+  "atri_detention_freq_rate": 0.634,
+  "atri_avg_detention_hours": 6.3,
+  "atri_avg_detention_cost_usd": 1281,
+  "atri_cost_per_hour_usd": 203,
+  "atri_reefer_multiplier": 1.4,
+  "atri_source": "ATRI 2024 Costs and Consequences of Truck Driver Detention",
+  "atri_year": 2024
+}
