@@ -300,7 +300,12 @@ def apply_enrichment(base: pd.DataFrame, spec: dict, permissive: bool) -> pd.Dat
         print(msg + " — SKIPPING")
         return base
 
-    enrich = pd.read_csv(fpath)
+    enrich = pd.read_csv(fpath, index_col=False)
+    # Normalize column names to lowercase so CSV headers like DOT_NUMBER match
+    enrich.columns = enrich.columns.str.lower()
+    # If join key ended up as the DataFrame index, restore it
+    if enrich.index.name and enrich.index.name not in enrich.columns:
+        enrich = enrich.reset_index()
     print(f"  [{name}] Loaded {len(enrich):,} rows from {os.path.basename(fpath)}")
 
     # Determine join keys
@@ -312,6 +317,22 @@ def apply_enrichment(base: pd.DataFrame, spec: dict, permissive: bool) -> pd.Dat
         rename_map = {e: b for e, b in zip(enrich_key, base_key) if e != b}
     else:
         rename_map = {enrich_key: base_key} if enrich_key != base_key else {}
+
+    # Coerce join key types to match base (avoid str/int merge errors)
+    join_keys_list = [base_key] if isinstance(base_key, str) else list(base_key)
+    for jk in join_keys_list:
+        if jk in enrich.columns and jk in base.columns:
+            base_dtype  = str(base[jk].dtype)
+            enrich_dtype = str(enrich[jk].dtype)
+            if base_dtype != enrich_dtype:
+                try:
+                    enrich[jk] = enrich[jk].astype(base_dtype)
+                except Exception:
+                    enrich[jk] = enrich[jk].astype(str)
+                    if base_dtype == "object":
+                        pass  # already str
+                    else:
+                        base[jk] = base[jk].astype(str)
     if rename_map:
         enrich = enrich.rename(columns=rename_map)
 
@@ -326,7 +347,7 @@ def apply_enrichment(base: pd.DataFrame, spec: dict, permissive: bool) -> pd.Dat
     base = base.merge(enrich, on=join_keys, how=spec["join_how"])
     after_rows  = len(base)
     if after_rows != before_rows:
-        print(f"    WARNING: row count changed {before_rows:,} → {after_rows:,} after merge")
+        print(f"    WARNING: row count changed {before_rows:,} -> {after_rows:,} after merge")
 
     # Fill missing values with zero for numeric enrichment cols
     for col in spec.get("fill_zero", []):
@@ -407,10 +428,14 @@ def main(permissive: bool = False, source: str = "ctgan"):
     print(f"\n{'='*60}")
     print(f"Final shape: {base.shape}")
     new_cols = [c for c in base.columns if c not in cols_before or True]
-    print(f"Total columns: {len(base.columns)} (was {len(pd.read_csv(CTGAN_IN, nrows=0).columns)})")
+    try:
+        orig_cols = len(pd.read_csv(CTGAN_IN, nrows=0).columns)
+        print(f"Total columns: {len(base.columns)} (was {orig_cols})")
+    except Exception:
+        print(f"Total columns: {len(base.columns)}")
 
     # Save
-    print(f"\nSaving enriched dataset → {out_csv}")
+    print(f"\nSaving enriched dataset -> {out_csv}")
     base.to_csv(out_csv, index=False)
     size_mb = Path(out_csv).stat().st_size / 1e6
     print(f"  Saved {size_mb:.0f} MB, {len(base):,} rows × {len(base.columns)} columns")
@@ -419,7 +444,7 @@ def main(permissive: bool = False, source: str = "ctgan"):
     report_lines.insert(0, f"Final: {base.shape[0]:,} rows × {base.shape[1]} columns\n")
     with open(REPORT_FILE, "w") as f:
         f.write("\n".join(report_lines))
-    print(f"\nReport → {REPORT_FILE}")
+    print(f"\nReport -> {REPORT_FILE}")
 
     print(f"\nNext step: retrain the model from this CSV:")
     print(f"  python pipeline/pace_transformer.py --csv {out_csv}")
