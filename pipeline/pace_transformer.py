@@ -449,6 +449,23 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     output_dir = Path(RESULTS_DIR)
     output_dir.mkdir(exist_ok=True)
 
+    # Save model weights FIRST before any plots can crash
+    os.makedirs(os.path.dirname(MODEL_WEIGHTS_PATH), exist_ok=True)
+    torch.save(best_state, MODEL_WEIGHTS_PATH)
+    print(f"  Model saved to {MODEL_WEIGHTS_PATH}")
+
+    # Save preprocessing artifacts for inference.py
+    artifacts = {
+        "cat_encoder":    cat_encoder,
+        "scaler":         scaler,
+        "cat_cols":       cat_cols,
+        "cont_cols":      cont_cols,
+        "risk_score_max": float(max_score),
+    }
+    with open(MODEL_ARTIFACTS_PATH, "wb") as f:
+        pickle.dump(artifacts, f)
+    print(f"  Preprocessing artifacts saved to {MODEL_ARTIFACTS_PATH}")
+
     print(f"  Regression RMSE: {np.sqrt(mean_squared_error(rt, rp)):.4f}")
     print(f"  Regression R2:   {r2_score(rt, rp):.4f}")
     print("\n  Classification Report:")
@@ -486,22 +503,6 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     fig.savefig(output_dir / "regression_scatter.png", dpi=150)
     plt.close(fig)
 
-    # Save model weights
-    os.makedirs(os.path.dirname(MODEL_WEIGHTS_PATH), exist_ok=True)
-    torch.save(best_state, MODEL_WEIGHTS_PATH)
-    print(f"  Model saved to {MODEL_WEIGHTS_PATH}")
-
-    # Save preprocessing artifacts for inference.py
-    artifacts = {
-        "cat_encoder":    cat_encoder,
-        "scaler":         scaler,
-        "cat_cols":       cat_cols,
-        "cont_cols":      cont_cols,
-        "risk_score_max": float(max_score),
-    }
-    with open(MODEL_ARTIFACTS_PATH, "wb") as f:
-        pickle.dump(artifacts, f)
-    print(f"  Preprocessing artifacts saved to {MODEL_ARTIFACTS_PATH}")
     print(f"  Results saved to {output_dir}/")
 
 
