@@ -371,6 +371,13 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     max_year = df[DATE_COLUMN].max()
     df_train = df[df[DATE_COLUMN] < max_year].reset_index(drop=True)
     df_test  = df[df[DATE_COLUMN] == max_year].reset_index(drop=True)
+    if len(df_train) < 1000:
+        # All rows are from the same year — fall back to random 80/20 split
+        print(f"  Time-based split produced empty train set — using random 80/20 split")
+        df = df.sample(frac=1, random_state=hp.random_state).reset_index(drop=True)
+        split = int(len(df) * 0.8)
+        df_train = df.iloc[:split].reset_index(drop=True)
+        df_test  = df.iloc[split:].reset_index(drop=True)
     print(f"  Train: {len(df_train):,} | Test: {len(df_test):,}")
 
     cat_cols = [c for c in CATEGORICAL_COLUMNS if c in df.columns]
