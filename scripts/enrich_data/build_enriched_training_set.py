@@ -1,30 +1,25 @@
 """
 Master Enrichment Builder — build_enriched_training_set.py
 ===========================================================
-Merges all enrichment feature files with ctgan_input.csv to produce
-enriched_ctgan_input.csv — the Phase 2 training input.
+Merges all enrichment feature files with a base training dataset to produce
+an enriched CSV ready for pace_transformer.py --csv.
 
 USAGE
 -----
-    # Step 1: Run all enrichment scripts first
-    python 01_carrier_oos_history.py
-    python 02_sms_percentiles.py
-    python 03_parking_scarcity.py
-    python 04_fars_crash_rates.py
-    python 05_atri_detention_lookup.py
-    python 06_freight_rate_proxy.py
-    python 08_faf_freight_flows.py
-
-    # Step 2: Build the merged dataset
+    # Default: merge enrichments with ctgan_input.csv (synthetic data)
     python build_enriched_training_set.py
 
-    # Optional: Only merge available enrichments (skip missing files)
-    python build_enriched_training_set.py --permissive
+    # Train on real FMCSA data (8.2M rows) — use this if CTGAN results are overfit
+    python build_enriched_training_set.py --source fmcsa
+
+    # Skip missing enrichment files
+    python build_enriched_training_set.py --source fmcsa --permissive
 
 OUTPUT
 ------
-outputs/enriched_ctgan_input.csv   — drop-in replacement for ctgan_input.csv
-outputs/enrichment_report.txt      — summary of what was added / coverage rates
+outputs/enriched_ctgan_input.csv     — from --source ctgan (default)
+outputs/enriched_fmcsa_training.csv  — from --source fmcsa
+outputs/enrichment_report.txt        — summary of columns added / coverage rates
 
 NEW FEATURES ADDED (relative to original ctgan_input)
 ------------------------------------------------------
@@ -79,8 +74,119 @@ PACE_DATA = os.getenv(
 REPO_ROOT   = Path(__file__).parents[2]
 ENRICH_DIR  = REPO_ROOT / "outputs" / "enrichment"
 CTGAN_IN    = os.path.join(PACE_DATA, "ctgan_input", "ctgan_input.csv")
-OUT_CSV     = REPO_ROOT / "outputs" / "enriched_ctgan_input.csv"
+FMCSA_IN    = os.path.join(PACE_DATA, "Vehicle_Inspection_File_20260312_NOT_SMS.csv")
+OUT_CTGAN   = REPO_ROOT / "outputs" / "enriched_ctgan_input.csv"
+OUT_FMCSA   = REPO_ROOT / "outputs" / "enriched_fmcsa_training.csv"
 REPORT_FILE = REPO_ROOT / "outputs" / "enrichment_report.txt"
+
+# ── FMCSA column map (uppercase raw → PACE lowercase) ─────────────────
+FMCSA_COL_MAP = {
+    "DOT_NUMBER":        "dot_number",
+    "REPORT_STATE":      "report_state",
+    "INSP_DATE":         "insp_date",
+    "INSP_LEVEL_ID":     "insp_level_id",
+    "COUNTY_CODE_STATE": "county_code_state",
+    "TIME_WEIGHT":       "time_weight",
+    "DRIVER_OOS_TOTAL":  "driver_oos_total",
+    "VEHICLE_OOS_TOTAL": "vehicle_oos_total",
+    "TOTAL_HAZMAT_SENT": "total_hazmat_sent",
+    "OOS_TOTAL":         "oos_total",
+    "HAZMAT_OOS_TOTAL":  "hazmat_oos_total",
+    "HAZMAT_PLACARD_REQ":"hazmat_placard_req",
+    "UNIT_TYPE_DESC":    "unit_type_desc",
+    "UNIT_MAKE":         "unit_make",
+    "UNIT_LICENSE_STATE":"unit_license_state",
+}
+
+
+def load_fmcsa(path: str, chunksize: int = 500_000) -> pd.DataFrame:
+    """
+    Load the real FMCSA Vehicle Inspection file, normalize columns,
+    parse dates, and compute accessorial_risk_score + accessorial_type labels.
+    """
+    print(f"Loading FMCSA inspection data from {path} ...")
+    chunks = []
+    total  = 0
+    reader = pd.read_csv(
+        path, sep=",", encoding="latin1", low_memory=False,
+        chunksize=chunksize,
+    )
+    for i, chunk in enumerate(reader):
+        # Normalize column names
+        chunk.columns = [c.strip().upper() for c in chunk.columns]
+        keep = {k: v for k, v in FMCSA_COL_MAP.items() if k in chunk.columns}
+        chunk = chunk[list(keep.keys())].rename(columns=keep)
+
+        # Parse date → temporal features
+        chunk["insp_date_parsed"] = pd.to_datetime(
+            chunk["insp_date"].astype(str), format="%Y%m%d", errors="coerce"
+        )
+        now = pd.Timestamp.now()
+        chunk["insp_year"]  = chunk["insp_date_parsed"].dt.year.fillna(now.year).astype(int)
+        chunk["insp_month"] = chunk["insp_date_parsed"].dt.month.fillna(now.month).astype(int)
+        chunk["insp_dow"]   = chunk["insp_date_parsed"].dt.dayofweek.fillna(0).astype(int)
+        chunk["insp_day"]   = chunk["insp_date_parsed"].dt.day.fillna(1).astype(int)
+        chunk = chunk.drop(columns=["insp_date", "insp_date_parsed"], errors="ignore")
+
+        # Numeric coercion
+        num_cols = ["oos_total", "driver_oos_total", "vehicle_oos_total",
+                    "hazmat_oos_total", "total_hazmat_sent", "insp_level_id", "time_weight"]
+        for col in num_cols:
+            if col in chunk.columns:
+                chunk[col] = pd.to_numeric(chunk[col], errors="coerce").fillna(0)
+
+        # Normalize dot_number
+        chunk["dot_number"] = chunk["dot_number"].astype(str).str.strip()
+
+        # Unique ID
+        chunk["unique_id"] = range(total, total + len(chunk))
+
+        chunks.append(chunk)
+        total += len(chunk)
+        print(f"  Chunk {i+1}: {total:,} rows loaded")
+
+    df = pd.concat(chunks, ignore_index=True)
+    print(f"Loaded {len(df):,} rows × {df.shape[1]} columns")
+
+    # ── Compute labels ─────────────────────────────────────────────────
+    print("Computing accessorial_risk_score and accessorial_type labels ...")
+
+    oos       = df.get("oos_total",         pd.Series(0, index=df.index))
+    drv_oos   = df.get("driver_oos_total",  pd.Series(0, index=df.index))
+    veh_oos   = df.get("vehicle_oos_total", pd.Series(0, index=df.index))
+    haz_oos   = df.get("hazmat_oos_total",  pd.Series(0, index=df.index))
+    haz_plac  = pd.to_numeric(
+        df.get("hazmat_placard_req", pd.Series(0, index=df.index)), errors="coerce"
+    ).fillna(0)
+
+    # Risk score — uses OOS counts available in this file
+    df["accessorial_risk_score"] = np.minimum(100.0,
+        oos     * 15.0 +
+        drv_oos * 10.0 +
+        veh_oos * 10.0 +
+        haz_oos *  5.0
+    ).astype(float)
+
+    # Accessorial type — mirrors the fixed v2 CASE logic
+    composite = oos * 15.0 + drv_oos * 10.0 + veh_oos * 10.0 + haz_oos * 5.0
+    conditions = [
+        composite >= 80,                          # 5 — High Risk / Multiple
+        (haz_oos > 0) | (haz_plac > 0),          # 4 — Hazmat Fee
+        drv_oos > 0,                              # 1 — Detention
+        veh_oos > 0,                              # 2 — Safety Surcharge (vehicle issues)
+    ]
+    choices = [5, 4, 1, 2]
+    df["accessorial_type"] = np.select(conditions, choices, default=0).astype(int)
+
+    # Label distribution
+    dist = df["accessorial_type"].value_counts().sort_index()
+    labels = ["No Charge", "Detention", "Safety Surcharge",
+              "Compliance Fee", "Hazmat Fee", "High Risk / Multiple"]
+    print("  Label distribution:")
+    for idx, count in dist.items():
+        print(f"    {idx} ({labels[idx]}): {count:,} ({count/len(df)*100:.1f}%)")
+
+    return df
 
 
 # ── Enrichment file registry ───────────────────────────────────────────
@@ -243,13 +349,28 @@ def apply_enrichment(base: pd.DataFrame, spec: dict, permissive: bool) -> pd.Dat
     return base
 
 
-def main(permissive: bool = False):
+def main(permissive: bool = False, source: str = "ctgan"):
     (REPO_ROOT / "outputs").mkdir(parents=True, exist_ok=True)
 
     # ── Load base ──────────────────────────────────────────────────────
-    print(f"Loading ctgan_input from {CTGAN_IN} ...")
-    base = pd.read_csv(CTGAN_IN, low_memory=False)
-    print(f"  Base shape: {base.shape}")
+    if source == "fmcsa":
+        if not os.path.exists(FMCSA_IN):
+            raise FileNotFoundError(
+                f"FMCSA file not found at {FMCSA_IN}\n"
+                f"Set PACE_DATA_DIR env var or place the file at the path above."
+            )
+        base    = load_fmcsa(FMCSA_IN)
+        out_csv = OUT_FMCSA
+    else:
+        if not os.path.exists(CTGAN_IN):
+            raise FileNotFoundError(
+                f"ctgan_input.csv not found at {CTGAN_IN}\n"
+                f"Set PACE_DATA_DIR env var or use --source fmcsa for real data."
+            )
+        print(f"Loading ctgan_input from {CTGAN_IN} ...")
+        base    = pd.read_csv(CTGAN_IN, low_memory=False)
+        out_csv = OUT_CTGAN
+        print(f"  Base shape: {base.shape}")
 
     # Normalise dot_number type for joining
     base["dot_number"] = base["dot_number"].astype(str).str.strip()
@@ -289,9 +410,9 @@ def main(permissive: bool = False):
     print(f"Total columns: {len(base.columns)} (was {len(pd.read_csv(CTGAN_IN, nrows=0).columns)})")
 
     # Save
-    print(f"\nSaving enriched dataset → {OUT_CSV}")
-    base.to_csv(OUT_CSV, index=False)
-    size_mb = OUT_CSV.stat().st_size / 1e6
+    print(f"\nSaving enriched dataset → {out_csv}")
+    base.to_csv(out_csv, index=False)
+    size_mb = Path(out_csv).stat().st_size / 1e6
     print(f"  Saved {size_mb:.0f} MB, {len(base):,} rows × {len(base.columns)} columns")
 
     # Write report
@@ -300,13 +421,15 @@ def main(permissive: bool = False):
         f.write("\n".join(report_lines))
     print(f"\nReport → {REPORT_FILE}")
 
-    print("\nNext step: upload enriched_ctgan_input.csv to Teradata and retrain.")
-    print("Update pipeline/config.py with NEW_CONTINUOUS_COLUMNS defined in config_v2.py")
+    print(f"\nNext step: retrain the model from this CSV:")
+    print(f"  python pipeline/pace_transformer.py --csv {out_csv}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Merge all enrichments into training set")
     parser.add_argument("--permissive", action="store_true",
                         help="Skip missing enrichment files instead of failing")
+    parser.add_argument("--source", choices=["ctgan", "fmcsa"], default="ctgan",
+                        help="Base dataset: 'ctgan' (synthetic, default) or 'fmcsa' (real 8.2M rows)")
     args = parser.parse_args()
-    main(permissive=args.permissive)
+    main(permissive=args.permissive, source=args.source)

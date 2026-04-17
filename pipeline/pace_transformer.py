@@ -117,6 +117,27 @@ def load_data() -> pd.DataFrame:
     return df
 
 
+def load_data_from_csv(csv_path: str) -> pd.DataFrame:
+    """Load training data from a local CSV file instead of Teradata."""
+    path = Path(csv_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"CSV not found: {csv_path}\n"
+            "Run: python scripts/enrich_data/build_enriched_training_set.py --source fmcsa"
+        )
+    size_mb = path.stat().st_size / 1e6
+    print(f"Loading from CSV: {csv_path} ({size_mb:.0f} MB)")
+    chunks = []
+    total  = 0
+    for chunk in pd.read_csv(csv_path, low_memory=False, chunksize=CHUNK_SIZE):
+        chunks.append(chunk)
+        total += len(chunk)
+        print(f"  Loaded {total:,} rows")
+    df = pd.concat(chunks, ignore_index=True)
+    print(f"Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
+    return df
+
+
 # ── Categorical encoder ───────────────────────────────────────────
 class CategoricalEncoder:
     """Represent the CategoricalEncoder component."""
@@ -315,7 +336,7 @@ def evaluate(model, loader, reg_crit, cls_crit, device):
 
 
 # ── Main pipeline ─────────────────────────────────────────────────
-def run_pipeline():
+def run_pipeline(csv_path: str = None):
     """Handle run pipeline."""
     hp = HyperParameters()
 
@@ -329,7 +350,12 @@ def run_pipeline():
         torch.cuda.manual_seed_all(hp.random_state)
 
     print("\n[1/6] Loading data...")
-    df = load_data()
+    if csv_path:
+        print(f"  Source: CSV ({csv_path})")
+        df = load_data_from_csv(csv_path)
+    else:
+        print(f"  Source: Teradata ({TD_DATABASE}.{TD_VIEW})")
+        df = load_data()
 
     print("\n[2/6] Normalizing regression target...")
     max_score = df[REGRESSION_TARGET].max()
@@ -463,4 +489,12 @@ def run_pipeline():
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    import argparse
+    parser = argparse.ArgumentParser(description="PACE FT-Transformer Training")
+    parser.add_argument(
+        "--csv", type=str, default=None,
+        help="Path to enriched CSV file to train from instead of Teradata. "
+             "Generate with: python scripts/enrich_data/build_enriched_training_set.py --source fmcsa"
+    )
+    args = parser.parse_args()
+    run_pipeline(csv_path=args.csv)
