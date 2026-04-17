@@ -117,7 +117,7 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-def load_data_from_csv(csv_path: str) -> pd.DataFrame:
+def load_data_from_csv(csv_path: str, max_rows: int = None) -> pd.DataFrame:
     """Load training data from a local CSV file instead of Teradata."""
     path = Path(csv_path)
     if not path.exists():
@@ -133,7 +133,11 @@ def load_data_from_csv(csv_path: str) -> pd.DataFrame:
         chunks.append(chunk)
         total += len(chunk)
         print(f"  Loaded {total:,} rows")
+        if max_rows and total >= max_rows:
+            break
     df = pd.concat(chunks, ignore_index=True)
+    if max_rows:
+        df = df.iloc[:max_rows]
     print(f"Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
     return df
 
@@ -336,7 +340,7 @@ def evaluate(model, loader, reg_crit, cls_crit, device):
 
 
 # ── Main pipeline ─────────────────────────────────────────────────
-def run_pipeline(csv_path: str = None):
+def run_pipeline(csv_path: str = None, max_rows: int = None):
     """Handle run pipeline."""
     hp = HyperParameters()
 
@@ -352,7 +356,7 @@ def run_pipeline(csv_path: str = None):
     print("\n[1/6] Loading data...")
     if csv_path:
         print(f"  Source: CSV ({csv_path})")
-        df = load_data_from_csv(csv_path)
+        df = load_data_from_csv(csv_path, max_rows=max_rows)
     else:
         print(f"  Source: Teradata ({TD_DATABASE}.{TD_VIEW})")
         df = load_data()
@@ -439,7 +443,9 @@ def run_pipeline(csv_path: str = None):
     print(f"  Regression RMSE: {np.sqrt(mean_squared_error(rt, rp)):.4f}")
     print(f"  Regression R2:   {r2_score(rt, rp):.4f}")
     print("\n  Classification Report:")
-    print(classification_report(ct, cp, target_names=CHARGE_TYPE_LABELS, digits=4))
+    present_labels = sorted(set(ct) | set(cp))
+    present_names  = [CHARGE_TYPE_LABELS[i] for i in present_labels if i < len(CHARGE_TYPE_LABELS)]
+    print(classification_report(ct, cp, labels=present_labels, target_names=present_names, digits=4))
 
     # Save predictions
     preds_df = df_test[[ID_COLUMN, DATE_COLUMN]].copy()
@@ -496,5 +502,9 @@ if __name__ == "__main__":
         help="Path to enriched CSV file to train from instead of Teradata. "
              "Generate with: python scripts/enrich_data/build_enriched_training_set.py --source fmcsa"
     )
+    parser.add_argument(
+        "--max-rows", type=int, default=None,
+        help="Cap rows loaded from CSV (e.g. 2000000 for faster training)"
+    )
     args = parser.parse_args()
-    run_pipeline(csv_path=args.csv)
+    run_pipeline(csv_path=args.csv, max_rows=args.max_rows)
