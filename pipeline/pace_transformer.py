@@ -466,8 +466,10 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
 
     # Confusion matrix
     fig, ax = plt.subplots(figsize=(9, 7))
+    present_labels = sorted(set(ct) | set(cp))
+    present_names  = [CHARGE_TYPE_LABELS[i] for i in present_labels if i < len(CHARGE_TYPE_LABELS)]
     ConfusionMatrixDisplay(
-        confusion_matrix(ct, cp), display_labels=CHARGE_TYPE_LABELS
+        confusion_matrix(ct, cp, labels=present_labels), display_labels=present_names
     ).plot(ax=ax)
     ax.set_title("PACE Accessorial Type Confusion Matrix")
     plt.tight_layout()
