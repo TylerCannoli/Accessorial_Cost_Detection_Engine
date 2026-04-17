@@ -270,16 +270,18 @@ def get_device():
     return torch.device("cpu"), 0
 
 
-def build_model(hp, cat_encoder, cat_cols, device, n_gpus):
+def build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=None):
     """Handle build model."""
     cardinalities = [cat_encoder.cardinalities[c] for c in cat_cols]
     embed_dims = [hp.compute_embedding_dim(c) for c in cardinalities]
     token_dim = hp.token_dim
     token_dim = ((token_dim + hp.n_heads - 1) // hp.n_heads) * hp.n_heads
+    if n_continuous is None:
+        n_continuous = len(CONTINUOUS_COLUMNS)
     model = PACETransformer(
         cat_cardinalities=cardinalities,
         cat_embed_dims=embed_dims,
-        n_continuous=len(CONTINUOUS_COLUMNS),
+        n_continuous=n_continuous,
         token_dim=token_dim,
         n_layers=hp.n_layers,
         n_heads=hp.n_heads,
@@ -399,7 +401,7 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
                               num_workers=4, pin_memory=True)
 
     print("\n[5/6] Training...")
-    model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus)
+    model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=len(cont_cols))
     reg_crit = nn.MSELoss()
     cls_crit = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=hp.learning_rate,
