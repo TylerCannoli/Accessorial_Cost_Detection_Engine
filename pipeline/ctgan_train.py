@@ -17,6 +17,7 @@ from pipeline.config import (
     CTGAN_MODEL_PATH, SYNTHETIC_CSV_PATH,
     CTGAN_DISCRETE_COLUMNS,
 )
+from pipeline.data_pipeline import BOOL_COLS
 
 warnings.filterwarnings("ignore")
 
@@ -30,7 +31,6 @@ def get_connection():
 
 
 def load_sample() -> pd.DataFrame:
-    """Handle load sample."""
     print(f"[1/5] Loading {CTGAN_TRAIN_ROWS:,} rows from {TD_SOURCE_TABLE}...")
     conn = get_connection()
     df = pd.read_sql(
@@ -43,15 +43,10 @@ def load_sample() -> pd.DataFrame:
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
-    """Handle preprocess."""
     print("[2/5] Preprocessing...")
 
     # Fix boolean-as-string columns
-    bool_cols = [
-        "sms_hm_flag", "sms_pc_flag", "sms_private_only",
-        "sms_authorized_for_hire", "sms_exempt_for_hire", "sms_private_property",
-    ]
-    for col in bool_cols:
+    for col in BOOL_COLS:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
             df[col] = df[col].map({"TRUE": "Y", "FALSE": "N"}).fillna("N")
@@ -76,7 +71,6 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def train_ctgan(df: pd.DataFrame) -> CTGAN:
-    """Handle train ctgan."""
     print("[3/5] Training CTGAN...")
     print(f"  Device: {'GPU' if torch.cuda.is_available() else 'CPU'}")
     print(f"  Epochs: {CTGAN_EPOCHS} | Batch size: {CTGAN_BATCH_SIZE}")
@@ -96,7 +90,6 @@ def train_ctgan(df: pd.DataFrame) -> CTGAN:
 
 
 def generate_synthetic(model: CTGAN) -> pd.DataFrame:
-    """Handle generate synthetic."""
     print(f"[4/5] Generating {CTGAN_SYNTHETIC_ROWS:,} synthetic rows...")
     synthetic_df = model.sample(CTGAN_SYNTHETIC_ROWS)
     os.makedirs(os.path.dirname(SYNTHETIC_CSV_PATH), exist_ok=True)
@@ -106,17 +99,17 @@ def generate_synthetic(model: CTGAN) -> pd.DataFrame:
 
 
 def write_to_teradata(synthetic_df: pd.DataFrame):
-    """Handle write to teradata."""
     print(f"[5/5] Writing to Teradata table {TD_SYNTHETIC_TABLE}...")
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Drop if exists
+    # Drop if exists — Teradata has no "DROP TABLE IF EXISTS" syntax,
+    # so we catch the error raised when the table is absent.
     try:
         cursor.execute(f"DROP TABLE {TD_DATABASE}.{TD_SYNTHETIC_TABLE}")
         print(f"  Dropped existing {TD_SYNTHETIC_TABLE}")
     except Exception:
-        pass
+        pass  # Table not found — safe to proceed with CREATE
 
     # Build CREATE TABLE
     col_defs = []

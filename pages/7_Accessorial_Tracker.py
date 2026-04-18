@@ -1,7 +1,5 @@
-# File: pages/7_Accessorial_Tracker.py
 import os
 import sys
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -11,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth_utils import require_auth
 from utils.database import get_connection_safe, get_shipments_with_charges
 from utils.mock_data import generate_mock_shipments
-from utils.styling import inject_css, sidebar_account, NAVY_500, TIER_COLORS, CHARGE_COLORS, RISK_HIGH_FG
+from utils.styling import inject_css, sidebar_account, NAVY_500, TIER_COLORS, CHARGE_COLORS, RISK_HIGH_FG, risk_score_to_label, search_dataframe
 from pipeline.config import CHARGE_TYPE_LABELS, is_pace_model_ready
 
 st.set_page_config(
@@ -56,12 +54,7 @@ if "risk_label" not in df_raw.columns:
     if "risk_tier" in df_raw.columns:
         df_raw["risk_label"] = df_raw["risk_tier"]
     else:
-        df_raw["risk_label"] = df_raw["risk_score_pct"].apply(
-            lambda s: "Critical" if s >= 75 else
-                      "High"     if s >= 50 else
-                      "Medium"   if s >= 25 else
-                      "Low"      if s > 0  else "None"
-        )
+        df_raw["risk_label"] = df_raw["risk_score_pct"].apply(risk_score_to_label)
 if "ship_date_dt" not in df_raw.columns:
     if "ship_date" in df_raw.columns:
         df_raw["ship_date_dt"] = pd.to_datetime(df_raw["ship_date"], errors="coerce")
@@ -96,7 +89,6 @@ df_all = df_raw.copy()
 def _build_donut_fig(df_in: pd.DataFrame, total_acc: float,
                      height: int = 280) -> go.Figure:
     # Use PACE charge_type if available, fall back to accessorial_type
-    """Handle build donut fig."""
     type_col = "charge_type" if "charge_type" in df_in.columns else "accessorial_type"
     type_data = (
         df_in.groupby(type_col)["accessorial_charge_usd"]
@@ -165,7 +157,6 @@ def _build_risk_distribution_fig(df_in: pd.DataFrame,
 
 def _build_carrier_fig(df_in: pd.DataFrame,
                         height: int = 280) -> go.Figure:
-    """Handle build carrier fig."""
     carrier_col = "carrier" if "carrier" in df_in.columns else "carrier_phy_state"
     if carrier_col not in df_in.columns:
         return go.Figure()
@@ -202,7 +193,6 @@ def _build_carrier_fig(df_in: pd.DataFrame,
 
 
 def _build_trend_fig(df_in: pd.DataFrame, height: int = 260) -> go.Figure:
-    """Handle build trend fig."""
     tmp = df_in.copy()
     tmp["week"] = tmp["ship_date_dt"].dt.to_period("W").dt.start_time
     weekly = (
@@ -270,7 +260,6 @@ def _build_risk_tier_fig(df_in: pd.DataFrame,
 
 @st.dialog("Accessorial Costs by Charge Type", width="large")
 def _popup_donut():
-    """Handle popup donut."""
     df_acc = df_all[df_all["accessorial_charge_usd"] > 0].copy()
     total  = df_acc["accessorial_charge_usd"].sum()
     st.caption(f"{len(df_acc):,} shipments with accessorial charges")
@@ -285,7 +274,6 @@ def _popup_donut():
 
 @st.dialog("Risk Score by Charge Type", width="large")
 def _popup_risk_dist():
-    """Handle popup risk dist."""
     df_acc = df_all[df_all["accessorial_charge_usd"] > 0].copy()
     st.caption("Distribution of PACE risk scores across charge types")
     if df_acc.empty:
@@ -299,7 +287,6 @@ def _popup_risk_dist():
 
 @st.dialog("Accessorial Costs by Carrier", width="large")
 def _popup_carrier():
-    """Handle popup carrier."""
     df_acc = df_all[df_all["accessorial_charge_usd"] > 0].copy()
     st.caption(f"{len(df_acc):,} shipments with accessorial charges")
     if df_acc.empty:
@@ -313,7 +300,6 @@ def _popup_carrier():
 
 @st.dialog("Accessorial Cost Trend", width="large")
 def _popup_trend():
-    """Handle popup trend."""
     df_acc = df_all[df_all["accessorial_charge_usd"] > 0].copy()
     if df_acc.empty:
         st.info("No trend data available.")
@@ -326,7 +312,6 @@ def _popup_trend():
 
 @st.dialog("PACE Risk Score Detail", width="large")
 def _show_risk_detail(row: dict):
-    """Handle show risk detail."""
     score  = float(row.get("risk_score_pct", 0))
     label  = row.get("risk_label", "Unknown")
     charge = row.get("charge_type",
@@ -673,14 +658,7 @@ with st.container(border=True):
         display_df = df[display_cols].copy()
 
         if search.strip():
-            str_cols = display_df.select_dtypes(include=["object"]).columns
-            mask = pd.Series(False, index=display_df.index)
-            for col in str_cols:
-                mask |= (
-                    display_df[col].astype(str)
-                    .str.contains(search.strip(), case=False, na=False)
-                )
-            display_df = display_df[mask]
+            display_df = search_dataframe(display_df, search)
 
         col_config = {}
         if "risk_score_pct" in display_df.columns:

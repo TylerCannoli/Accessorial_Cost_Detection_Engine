@@ -1,4 +1,3 @@
-# File: pages/_loading.py (leading underscore = hidden from Streamlit sidebar)
 """
 Loading screen — shown after login, pre-warms all data caches before
 redirecting to the destination page stored in session state.
@@ -14,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import check_auth
 from pipeline.config import is_pace_model_ready
-from utils.styling import remove_nav_toggle_fallback, inject_persistent_nav_hides
+from utils.styling import remove_nav_toggle_fallback, inject_persistent_nav_hides, get_background_css
 
 st.set_page_config(
     page_title="PACE — Loading",
@@ -47,17 +46,7 @@ _load_start = time.time()
 st.session_state["_data_preloaded"] = True
 
 # ── Loading page CSS ───────────────────────────────────────────────────────────
-def _bg_css() -> str:
-    """Handle bg css."""
-    img = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "background.png")
-    if os.path.exists(img):
-        with open(img, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        return (f"background-image:url('data:image/png;base64,{b64}');"
-                "background-size:cover;background-position:center;")
-    return "background:linear-gradient(155deg,#060012 0%,#09021a 40%,#06010f 100%);"
-
-_bg_props = _bg_css()
+_bg_props = get_background_css()
 
 st.markdown(f"""
 <style>
@@ -148,7 +137,6 @@ status_slot  = st.empty()
 
 
 def _step(msg: str, pct: int):
-    """Handle step."""
     progress_bar.progress(pct)
     status_slot.markdown(
         f"<p style='text-align:center;color:#E2E8F0;font-size:13px;margin:6px 0;'>{msg}…</p>",
@@ -206,8 +194,6 @@ try:
     get_facilities(conn)
 
     _step("Initializing models", 75)
-    # PACE FT-Transformer replaces old LightGBM models
-    # Old get_cost_model / get_risk_model calls removed
 
     _step("Preparing dashboards", 90)
     _df = df.copy()
@@ -234,8 +220,9 @@ try:
             ensure_weights_ready()
         if is_pace_model_ready():
             get_inference_engine()
-    except Exception:
-        pass  # Model not trained yet — skip silently
+    except Exception as e:
+        import logging
+        logging.warning("PACE: model pre-warm failed (model may not be trained yet): %s", e)
 
     progress_bar.progress(100)
     status_slot.markdown(

@@ -1,4 +1,3 @@
-# File: pages/5_Route_Analysis.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -9,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
 from utils.database import load_shipments_with_fallback
-from utils.styling import inject_css, sidebar_account, NAVY_500, NAVY_900
+from utils.styling import inject_css, sidebar_account
 
 st.set_page_config(
     page_title="PACE — Route Analysis",
@@ -30,7 +29,6 @@ df_all = df_raw  # module-level alias used by dialogs
 
 # ── Date-range filter helpers ─────────────────────────────────────────────────
 def _filter_by_range(df: pd.DataFrame, sel: str) -> pd.DataFrame:
-    """Handle filter by range."""
     days_map = {"1M": 30, "3M": 90, "6M": 180, "1Y": 365}
     if sel not in days_map:
         return df
@@ -39,7 +37,6 @@ def _filter_by_range(df: pd.DataFrame, sel: str) -> pd.DataFrame:
 
 
 def _range_buttons(chart_key: str):
-    """Handle range buttons."""
     opts = ["1M", "3M", "6M", "1Y", "All"]
     skey = f"popup_range_{chart_key}"
     if skey not in st.session_state:
@@ -57,7 +54,6 @@ def _range_buttons(chart_key: str):
 # ── Lane metrics builder (shared by page and dialogs) ─────────────────────────
 def _build_lane_metrics(df: pd.DataFrame, group_col: str, label: str,
                         min_vol: int = 1) -> pd.DataFrame:
-    """Handle build lane metrics."""
     lm = (
         df.groupby(group_col)
         .agg(
@@ -87,7 +83,6 @@ def _build_lane_metrics(df: pd.DataFrame, group_col: str, label: str,
 # ── Chart-builder functions ───────────────────────────────────────────────────
 def _build_expensive_fig(lane_metrics: pd.DataFrame, label: str,
                          height=300) -> go.Figure:
-    """Handle build expensive fig."""
     top_exp = lane_metrics.nlargest(8, "avg_cpm").sort_values("avg_cpm")
     fig = go.Figure(go.Bar(
         x=top_exp["avg_cpm"],
@@ -111,7 +106,6 @@ def _build_expensive_fig(lane_metrics: pd.DataFrame, label: str,
 
 def _build_efficient_fig(lane_metrics: pd.DataFrame, label: str,
                          height=300) -> go.Figure:
-    """Handle build efficient fig."""
     top_cheap = lane_metrics.nsmallest(8, "avg_cpm").sort_values("avg_cpm", ascending=False)
     fig = go.Figure(go.Bar(
         x=top_cheap["avg_cpm"],
@@ -135,7 +129,6 @@ def _build_efficient_fig(lane_metrics: pd.DataFrame, label: str,
 
 def _build_scatter_fig(lane_metrics: pd.DataFrame, label: str,
                        height=320) -> go.Figure:
-    """Handle build scatter fig."""
     scatter_fig = px.scatter(
         lane_metrics,
         x="shipments",
@@ -166,7 +159,6 @@ def _build_scatter_fig(lane_metrics: pd.DataFrame, label: str,
 
 # ── Helper: resolve group_col + label from session state ─────────────────────
 def _resolve_group():
-    """Handle resolve group."""
     view_by = st.session_state.get("route_view_by", "Lane (Origin → Dest)")
     if view_by == "Lane (Origin → Dest)":
         return "lane", "Lane"
@@ -179,7 +171,6 @@ def _resolve_group():
 # ── Expand dialogs (module-level) ─────────────────────────────────────────────
 @st.dialog("Most Expensive Lanes", width="large")
 def _popup_expensive():
-    """Handle popup expensive."""
     sel = _range_buttons("expensive")
     df_f = _filter_by_range(df_all, sel)
     group_col, label = _resolve_group()
@@ -194,7 +185,6 @@ def _popup_expensive():
 
 @st.dialog("Most Efficient Lanes", width="large")
 def _popup_efficient():
-    """Handle popup efficient."""
     sel = _range_buttons("efficient")
     df_f = _filter_by_range(df_all, sel)
     group_col, label = _resolve_group()
@@ -209,7 +199,6 @@ def _popup_efficient():
 
 @st.dialog("Lane Volume vs Avg Cost", width="large")
 def _popup_scatter():
-    """Handle popup scatter."""
     sel = _range_buttons("scatter")
     df_f = _filter_by_range(df_all, sel)
     group_col, label = _resolve_group()

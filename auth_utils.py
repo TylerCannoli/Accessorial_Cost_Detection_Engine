@@ -1,4 +1,3 @@
-# File: auth_utils.py
 import streamlit as st
 
 def logout():

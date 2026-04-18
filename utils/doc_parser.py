@@ -72,7 +72,6 @@ def check_ollama() -> tuple[bool, str]:
 
 # ── Text extraction ────────────────────────────────────────────────────────────
 def _extract_pdf_text(file_bytes: bytes) -> str:
-    """Handle extract pdf text."""
     try:
         import pdfplumber
     except ImportError:
@@ -87,7 +86,6 @@ def _extract_pdf_text(file_bytes: bytes) -> str:
 
 
 def _extract_image_text(file_bytes: bytes) -> str:
-    """Handle extract image text."""
     try:
         from PIL import Image
         import pytesseract
@@ -218,7 +216,6 @@ def _st_map_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Ollama extraction ─────────────────────────────────────────────────────────
 def _call_ollama(text: str) -> list[dict]:
-    """Handle call ollama."""
     fields_desc = "\n".join(f'  "{k}": {v}' for k, v in PACE_FIELDS.items())
     prompt = (
         "You are a logistics data extraction assistant. "

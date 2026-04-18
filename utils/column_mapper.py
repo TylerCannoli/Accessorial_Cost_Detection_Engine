@@ -18,7 +18,7 @@ import sys
 import json
 import re
 import requests
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -40,7 +40,7 @@ OLLAMA_TIMEOUT = 45
 
 # ── Sentence-transformer model cache ─────────────────────────────────────────
 _ST_MODEL_NAME = "all-MiniLM-L6-v2"
-_ST_CACHE: Dict[str, dict] = {}
+_ST_CACHE: Dict[str, Dict[str, Any]] = {}
 
 # ── Rich descriptions for commonly user-provided columns ─────────────────────
 # Expand abbreviations and add synonyms so cosine similarity is more accurate.
@@ -190,7 +190,7 @@ class ColumnMapper:
         _ST_CACHE[_ST_MODEL_NAME] = {"model": model, "keys": keys, "embeddings": embs}
         return model, keys, embs
 
-    def semantic(self, user_columns: List[str]) -> Dict[str, Dict]:
+    def semantic(self, user_columns: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Map user_columns to PACE columns via greedy cosine-similarity assignment.
         Each PACE column can only be assigned to one user column.
@@ -219,7 +219,7 @@ class ColumnMapper:
 
         used_pace: set  = set()
         used_input: set = set()
-        results: Dict[str, Dict] = {}
+        results: Dict[str, Dict[str, Any]] = {}
 
         for score, i, j in candidates:
             col      = user_columns[i]
@@ -260,7 +260,7 @@ class ColumnMapper:
         except Exception as e:
             return False, f"Cannot reach Ollama: {e}"
 
-    def ollama(self, user_columns: List[str], model_name: str = "llama3.2") -> Dict[str, Dict]:
+    def ollama(self, user_columns: List[str], model_name: str = "llama3.2") -> Dict[str, Dict[str, Any]]:
         """
         Map user_columns using a local Ollama LLM.
         Falls back to semantic() if Ollama is unavailable or returns bad JSON.
@@ -328,7 +328,7 @@ JSON object:"""
                 return self.semantic(user_columns)
 
         pace_col_set = set(PACE_TARGET_COLS)
-        results: Dict[str, Dict] = {}
+        results: Dict[str, Dict[str, Any]] = {}
         for col in user_columns:
             suggested = mapping.get(col)
             if suggested and suggested in pace_col_set:
@@ -345,7 +345,7 @@ JSON object:"""
         user_columns: List[str],
         method:       str = "semantic",
         ollama_model: str = "llama3.2",
-    ) -> Dict[str, Dict]:
+    ) -> Dict[str, Dict[str, Any]]:
         """
         Map unrecognized column names to PACE schema columns.
 
@@ -355,7 +355,7 @@ JSON object:"""
             ollama_model:  Ollama model tag, only used when method="ollama".
 
         Returns:
-            Dict[str, Dict] where each value has keys:
+            Dict[str, Dict[str, Any]] where each value has keys:
                 pace_col   (str | None)
                 confidence (float 0.0–1.0)
                 method     (str)

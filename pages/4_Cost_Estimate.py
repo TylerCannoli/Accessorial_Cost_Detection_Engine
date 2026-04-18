@@ -9,7 +9,7 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
-from utils.styling import inject_css, sidebar_account
+from utils.styling import inject_css, sidebar_account, inject_metric_wrap_css
 
 from utils.database import load_shipments_with_fallback
 
@@ -33,7 +33,6 @@ sidebar_account(username)
 # Helpers
 # -------------------------------------------------------------------
 def _safe_float(value, default=0.0):
-    """Handle safe float."""
     try:
         if value is None or (isinstance(value, float) and np.isnan(value)):
             return default
@@ -43,7 +42,6 @@ def _safe_float(value, default=0.0):
 
 
 def _safe_str(value, default=""):
-    """Handle safe str."""
     if value is None:
         return default
     try:
@@ -229,7 +227,6 @@ def _subset_with_min_rows(
     filters: list[tuple[str, str]],
     min_rows: int,
 ) -> pd.DataFrame:
-    """Handle subset with min rows."""
     subset = df.copy()
     for col, value in filters:
         if value and col in subset.columns:
@@ -344,7 +341,6 @@ def _get_history_subset(
 
 
 def _fmt_filter_value(value: str) -> str:
-    """Handle fmt filter value."""
     return value if value else "Any"
 
 
@@ -360,8 +356,8 @@ _db_live = _get_conn_safe() is not None
 st.markdown("## Cost Estimator")
 st.caption(
     "Estimate total shipment cost using the Random Forest cost model trained on "
-    "historical shipment data. Clayton requested the estimator be refined using "
-    "DOT, origin, and destination filters before model training."
+    "historical shipment data. DOT, origin, and destination filters narrow the "
+    "training subset to the most relevant historical shipments before fitting."
 )
 
 if _db_live:
@@ -380,34 +376,7 @@ else:
 st.divider()
 
 # Ensure KPI-style metric labels/values wrap instead of truncating in narrow columns.
-st.markdown(
-    """
-<style>
-div[data-testid="stMetric"] label[data-testid="stMetricLabel"] > div,
-div[data-testid="stMetric"] label[data-testid="stMetricLabel"] p,
-div[data-testid="stMetricValue"],
-div[data-testid="stMetricValue"] > div,
-div[data-testid="stMetricValue"] > div > div,
-div[data-testid="stMetricDelta"] > div {
-    white-space: normal !important;
-    overflow-wrap: anywhere !important;
-    word-break: break-word !important;
-}
-div[data-testid="stMetricValue"] > div,
-div[data-testid="stMetricValue"] > div > div {
-    font-size: clamp(1.05rem, 1.4vw, 1.5rem) !important;
-    line-height: 1.25 !important;
-}
-div[data-testid="stMetricDelta"] > div {
-    line-height: 1.2 !important;
-}
-div[data-testid="stMetric"] {
-    min-height: 132px !important;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+inject_metric_wrap_css()
 
 if shipments_df is None or shipments_df.empty:
     st.error(

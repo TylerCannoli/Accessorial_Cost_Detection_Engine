@@ -31,7 +31,7 @@ import yaml
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional, Union
 from datetime import datetime
 
 # Default config directory — override with PACE_CARRIER_CONFIGS env var
@@ -108,7 +108,7 @@ _STATE_NAMES = {
 }
 
 
-def _normalize_state(val: Any) -> str:
+def _normalize_state(val: Union[str, float, int, None]) -> str:
     """Normalize any state representation to 2-letter abbreviation."""
     if pd.isna(val):
         return "UNKNOWN"
@@ -120,7 +120,7 @@ def _normalize_state(val: Any) -> str:
     return _STATE_NAMES.get(s, "UNKNOWN")
 
 
-def _parse_date(val: Any, fmt: Optional[str] = None) -> Optional[datetime]:
+def _parse_date(val: Union[str, float, int, datetime, pd.Timestamp, None], fmt: Optional[str] = None) -> Optional[datetime]:
     """Parse a date value into a datetime, trying common formats."""
     if pd.isna(val):
         return None
@@ -141,7 +141,7 @@ def _parse_date(val: Any, fmt: Optional[str] = None) -> Optional[datetime]:
             continue
     try:
         return pd.to_datetime(s, infer_datetime_format=True)
-    except Exception:
+    except (ValueError, TypeError, OverflowError):
         return None
 
 
@@ -160,7 +160,7 @@ class CarrierSchema:
         defaults      — optional dict of {pace_column: default_value}
     """
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict[str, Any]):
         self.carrier_id   = config.get("carrier_id", "unknown")
         self.field_map    = config.get("field_map", {})
         self.value_maps   = config.get("value_maps", {})
@@ -260,7 +260,7 @@ class CarrierSchema:
 
         return df
 
-    def validate(self, df: pd.DataFrame) -> Dict:
+    def validate(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
         Check what PACE columns are present after normalization.
         Returns a report dict with 'present', 'missing', and 'coverage_pct'.

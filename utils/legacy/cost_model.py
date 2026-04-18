@@ -1,6 +1,6 @@
-# DEPRECATED — moved to utils/legacy/ on 2026-04-02.
-# No active pages import this file. Superseded by pipeline/inference.py
-# (PACE FT-Transformer). Retained for reference only — do not use.
+# DEPRECATED — superseded by pipeline/inference.py (PACE FT-Transformer).
+# Still imported by pages/4_Cost_Estimate.py until that page is migrated.
+# Do not add new callers.
 """
 utils/cost_model.py
 Shared cost-estimation model loader.

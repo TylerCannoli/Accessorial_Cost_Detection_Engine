@@ -8,7 +8,7 @@ import os
 import base64
 import streamlit as st
 
-from auth_utils import pace_role_is_admin
+from auth_utils import pace_role_is_admin, logout
 
 # Sidebar: hide flow-only pages (still routable via st.switch_page).
 # Also hides the root "app" entry — app.py is the marketing landing page and
@@ -816,8 +816,6 @@ def sidebar_account(username: str) -> None:
                 use_container_width=True,
             )
         if st.button("Sign out", key="pace_sidebar_signout", use_container_width=True):
-            from auth_utils import logout
-
             logout()
 
 
@@ -835,7 +833,84 @@ def risk_badge_html(tier: str) -> str:
     )
 
 
-# Keep for backwards compatibility — now a no-op
-def sidebar_header(username: str) -> None:
-    """Handle sidebar header."""
-    pass
+
+# ── Shared helpers (used by multiple pages) ───────────────────────────────────
+
+def risk_score_to_label(score: float) -> str:
+    """Convert a 0–100 risk score to a PACE risk label string.
+
+    Used in 3_Shipments, 7_Accessorial_Tracker, and any future page that needs
+    this mapping.  Thresholds: Critical ≥75, High ≥50, Medium ≥25, Low >0, None.
+    """
+    if score >= 75:
+        return "Critical"
+    if score >= 50:
+        return "High"
+    if score >= 25:
+        return "Medium"
+    if score > 0:
+        return "Low"
+    return "None"
+
+
+def search_dataframe(df: "pd.DataFrame", query: str) -> "pd.DataFrame":
+    """Return rows where *any* object column contains *query* (case-insensitive).
+
+    Identical search logic was duplicated in 3_Shipments and 7_Accessorial_Tracker.
+    Returns the original DataFrame unchanged when *query* is blank.
+    """
+    import pandas as pd  # local import — avoids circular dep if called at module level
+    q = query.strip()
+    if not q:
+        return df
+    str_cols = df.select_dtypes(include=["object"]).columns
+    mask = pd.Series(False, index=df.index)
+    for col in str_cols:
+        mask |= df[col].astype(str).str.contains(q, case=False, na=False)
+    return df[mask]
+
+
+_METRIC_WRAP_CSS = """
+<style>
+div[data-testid="stMetric"] label[data-testid="stMetricLabel"] > div,
+div[data-testid="stMetric"] label[data-testid="stMetricLabel"] p,
+div[data-testid="stMetricValue"],
+div[data-testid="stMetricValue"] > div,
+div[data-testid="stMetricValue"] > div > div,
+div[data-testid="stMetricDelta"] > div {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+}
+div[data-testid="stMetricValue"] > div,
+div[data-testid="stMetricValue"] > div > div {
+    font-size: clamp(1.05rem, 1.4vw, 1.5rem) !important;
+    line-height: 1.25 !important;
+}
+div[data-testid="stMetricDelta"] > div {
+    line-height: 1.2 !important;
+}
+div[data-testid="stMetric"] {
+    min-height: 132px !important;
+}
+</style>
+"""
+
+
+def get_background_css() -> str:
+    """Public wrapper around _bg_css() for pages that need the raw background CSS string.
+
+    Previously each of _Login.py and _loading.py contained a private copy of _bg_css().
+    Those copies are identical to the one already here — call this instead.
+    """
+    return _bg_css()
+
+
+def inject_metric_wrap_css() -> None:
+    """Inject CSS that prevents metric labels/values from truncating in narrow columns.
+
+    Previously duplicated in 0_Home and 4_Cost_Estimate with slight variations.
+    The consolidated version covers stMetricDelta (needed by Cost_Estimate) and
+    is safe to call on any page that uses st.metric in narrow columns.
+    """
+    st.markdown(_METRIC_WRAP_CSS, unsafe_allow_html=True)

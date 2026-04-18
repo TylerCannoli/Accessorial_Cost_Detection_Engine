@@ -10,7 +10,7 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Any, Dict, List, Optional
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -79,7 +79,7 @@ EIA_DIESEL_PRODUCTS = {
 class FMCSAClient:
     """Fetches real-time FMCSA carrier safety data by DOT number."""
 
-    def get_carrier_profile(self, dot_number: int) -> Dict:
+    def get_carrier_profile(self, dot_number: int) -> Dict[str, Any]:
         """Return carrier profile."""
         try:
             r = requests.get(
@@ -107,7 +107,7 @@ class FMCSAClient:
         except Exception:
             return None
 
-    def get_sms_scores(self, dot_number: int) -> Dict:
+    def get_sms_scores(self, dot_number: int) -> Dict[str, Any]:
         """Return sms scores."""
         try:
             r = requests.get(
@@ -120,7 +120,7 @@ class FMCSAClient:
         except Exception:
             return {}
 
-    def get_recent_inspections(self, dot_number: int, limit: int = 10) -> List[Dict]:
+    def get_recent_inspections(self, dot_number: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Return recent inspections."""
         try:
             r = requests.get(
@@ -136,7 +136,7 @@ class FMCSAClient:
         except Exception:
             return []
 
-    def get_recent_violations(self, dot_number: int, limit: int = 20) -> List[Dict]:
+    def get_recent_violations(self, dot_number: int, limit: int = 20) -> List[Dict[str, Any]]:
         """Return recent violations."""
         try:
             r = requests.get(
@@ -152,7 +152,7 @@ class FMCSAClient:
         except Exception:
             return []
 
-    def get_crash_history(self, dot_number: int) -> List[Dict]:
+    def get_crash_history(self, dot_number: int) -> List[Dict[str, Any]]:
         """Return crash history."""
         try:
             r = requests.get(
@@ -164,7 +164,7 @@ class FMCSAClient:
         except Exception:
             return []
 
-    def build_realtime_features(self, dot_number: int) -> Dict:
+    def build_realtime_features(self, dot_number: int) -> Dict[str, Any]:
         """Build complete PACE-compatible feature dict from FMCSA data."""
         profile     = self.get_carrier_profile(dot_number)
         sms         = self.get_sms_scores(dot_number)
@@ -325,7 +325,7 @@ class EIAClient:
 class NWSClient:
     """National Weather Service — free, no key required."""
 
-    def get_forecast_by_coords(self, lat: float, lon: float) -> Dict:
+    def get_forecast_by_coords(self, lat: float, lon: float) -> Dict[str, Any]:
         """Return forecast by coords."""
         try:
             point_r = requests.get(
@@ -349,7 +349,7 @@ class NWSClient:
         except Exception as e:
             return {"error": str(e)}
 
-    def get_alerts(self, state: str) -> List[Dict]:
+    def get_alerts(self, state: str) -> List[Dict[str, Any]]:
         """Return alerts."""
         try:
             r = requests.get(
@@ -370,14 +370,12 @@ class NWSClient:
             return []
 
     def _parse_wind(self, wind_str: str) -> float:
-        """Handle parse wind."""
         try:
             return float(wind_str.split()[0])
         except Exception:
             return 0.0
 
-    def build_weather_features(self, lat: float, lon: float) -> Dict:
-        """Handle build weather features."""
+    def build_weather_features(self, lat: float, lon: float) -> Dict[str, Any]:
         forecast = self.get_forecast_by_coords(lat, lon)
         return {
             "wx_avg_high_f":      float(forecast.get("wx_temp_f") or 0),
@@ -400,7 +398,7 @@ class OWMClient:
     Free tier: 1,000 calls/day
     """
 
-    def get_current_weather(self, lat: float, lon: float) -> Dict:
+    def get_current_weather(self, lat: float, lon: float) -> Dict[str, Any]:
         """Return current weather."""
         try:
             r = requests.get(
@@ -425,7 +423,7 @@ class OWMClient:
         except Exception as e:
             return {"error": str(e)}
 
-    def get_weather_by_city(self, city: str, state: str = "US") -> Dict:
+    def get_weather_by_city(self, city: str, state: str = "US") -> Dict[str, Any]:
         """Return weather by city."""
         try:
             r = requests.get(
@@ -458,7 +456,7 @@ class OWMClient:
 class BTSClient:
     """Bureau of Transportation Statistics freight indicators."""
 
-    def get_freight_indicators(self) -> Dict:
+    def get_freight_indicators(self) -> Dict[str, Any]:
         """Return freight indicators."""
         try:
             r = requests.get(
@@ -489,7 +487,7 @@ class CensusClient:
         "493190": "fac_estab_493190",
     }
 
-    def get_establishments_by_state(self, state_fips: str) -> Dict:
+    def get_establishments_by_state(self, state_fips: str) -> Dict[str, int]:
         """Return establishments by state."""
         results = {}
         for naics, col_name in self.NAICS_MAP.items():
@@ -533,7 +531,6 @@ class RealTimeEnrichment:
     """
 
     def __init__(self):
-        """Handle init."""
         self.fmcsa  = FMCSAClient()
         self.fred   = FREDClient()
         self.eia    = EIAClient()
@@ -547,7 +544,7 @@ class RealTimeEnrichment:
         self._eia_cache       = None
         self._eia_cache_time  = None
 
-    def _get_fred_features(self) -> Dict:
+    def _get_fred_features(self) -> Dict[str, float]:
         """Return fred features."""
         now = datetime.now()
         if self._fred_cache is None or (now - self._fred_cache_time).seconds > 3600:
@@ -556,7 +553,7 @@ class RealTimeEnrichment:
             self._fred_cache_time = now
         return self._fred_cache
 
-    def _get_eia_features(self) -> Dict:
+    def _get_eia_features(self) -> Dict[str, float]:
         """Return eia features."""
         now = datetime.now()
         if self._eia_cache is None or (now - self._eia_cache_time).seconds > 3600:
@@ -568,7 +565,7 @@ class RealTimeEnrichment:
     def enrich_dot(self, dot_number: int,
                    origin_lat: float = None,
                    origin_lon: float = None,
-                   origin_state: str = None) -> Dict:
+                   origin_state: str = None) -> Dict[str, Any]:
         """Full enrichment for a DOT number lookup."""
         print(f"Enriching DOT {dot_number}...")
         features = self.fmcsa.build_realtime_features(dot_number)
@@ -589,11 +586,11 @@ class RealTimeEnrichment:
 
         return features
 
-    def enrich_manual(self, user_inputs: Dict,
+    def enrich_manual(self, user_inputs: Dict[str, Any],
                       origin_lat: float = None,
                       origin_lon: float = None,
                       origin_city: str = None,
-                      origin_state: str = None) -> Dict:
+                      origin_state: str = None) -> Dict[str, Any]:
         """Enrich manually entered shipment data with live signals."""
         features = dict(user_inputs)
         features.update(self._get_fred_features())

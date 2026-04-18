@@ -1,4 +1,3 @@
-# File: pages/2_Upload.py
 import os
 import sys
 import io
@@ -40,7 +39,6 @@ MODEL_READY = is_pace_model_ready()
 
 # ── Helper: tier color ────────────────────────────────────────────
 def tier_badge(label: str) -> str:
-    """Handle tier badge."""
     color = TIER_COLORS.get(label, "#94A3B8")
     return (
         f"<span style='background:rgba(0,0,0,0.3);border:1px solid {color};"

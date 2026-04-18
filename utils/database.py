@@ -5,7 +5,7 @@ Reads credentials from .env (local) or st.secrets (Streamlit Cloud).
 """
 import os
 import hashlib
-from typing import Optional, Tuple       # ← added from teammate (used by several functions)
+from typing import Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -27,11 +27,10 @@ def _get_secret(key: str) -> str:
     """Read a secret from st.secrets (cloud) or os.environ (local)."""
     try:
         return st.secrets["azure_sql"][key]
-    except Exception:                    # ← teammate's broader except (safer than KeyError only)
+    except Exception:
         return os.getenv(key, "")
 
 
-# ── Added from teammate ───────────────────────────────────────────────────────
 def get_db_config_status() -> Tuple[bool, str]:
     """Check whether all required DB env vars are present."""
     if not PYMSSQL_AVAILABLE:
@@ -117,7 +116,6 @@ def get_connection_safe():
         return get_connection()
 
 
-# ── Added from teammate ───────────────────────────────────────────────────────
 def test_connection() -> Tuple[bool, str]:
     """Create a fresh (uncached) connection to verify credentials are working."""
     ok, reason = get_db_config_status()
@@ -144,7 +142,6 @@ def test_connection() -> Tuple[bool, str]:
         return False, f"Database connection failed: {e}"
 
 
-# ── Added from teammate ───────────────────────────────────────────────────────
 def clear_db_cache():
     """Clear all Streamlit data and resource caches (used after user mutations)."""
     try:
@@ -351,7 +348,7 @@ def verify_pace_user(_conn, username: str, password: str) -> Optional[str]:
     if _conn is None:
         return None
 
-    # ← teammate's normalization added: case-insensitive login
+    # Case-insensitive login — normalize before hash comparison
     username = username.lower().strip()
     pw_hash  = hashlib.sha256(password.encode()).hexdigest()
 
@@ -363,8 +360,9 @@ def verify_pace_user(_conn, username: str, password: str) -> Optional[str]:
         )
         if not row.empty:
             return str(row.iloc[0]["role"])
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.warning("PACE: verify_pace_user query failed: %s", e)
     return None
 
 
@@ -389,7 +387,6 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
     if _conn is None:
         return False, "No database connection."
 
-    # ← teammate: normalize + validate inputs
     username = str(username).strip().lower()
     role     = str(role).strip().lower()
 
@@ -402,7 +399,6 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
     pw_hash = hashlib.sha256(password.encode()).hexdigest()
 
     try:
-        # ← teammate: duplicate-user check before insert
         existing = pd.read_sql(
             "SELECT username FROM PaceUsers WHERE LOWER(username) = %s",
             _conn,
@@ -417,7 +413,7 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
             (username, pw_hash, role),
         )
         _conn.commit()
-        clear_db_cache()                 # ← teammate: refresh cache after mutation
+        clear_db_cache()
         return True, f"User '{username}' created successfully."
     except Exception as e:
         return False, str(e)
@@ -426,7 +422,7 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
 def delete_pace_user(
     _conn,
     username: str,
-    current_username: Optional[str] = None,   # ← teammate: self-delete guard
+    current_username: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Delete a user from PaceUsers by username."""
     if _conn is None:
@@ -435,7 +431,6 @@ def delete_pace_user(
     username         = str(username).strip().lower()
     current_username = (current_username or "").strip().lower()
 
-    # ← teammate: prevent admin from deleting their own account
     if username == current_username:
         return False, "You cannot delete the currently logged-in admin."
 
@@ -443,7 +438,7 @@ def delete_pace_user(
         cursor = _conn.cursor()
         cursor.execute("DELETE FROM PaceUsers WHERE LOWER(username) = %s", (username,))
         _conn.commit()
-        clear_db_cache()                 # ← teammate: refresh cache after mutation
+        clear_db_cache()
         return True, f"User '{username}' deleted."
     except Exception as e:
         return False, str(e)
@@ -543,7 +538,9 @@ def load_shipments_from_teradata(row_limit: int = 50000) -> pd.DataFrame:
 
         return df
 
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.warning("PACE: load_shipments_from_teradata failed: %s", e)
         return pd.DataFrame()
 
 
@@ -553,8 +550,8 @@ def load_teradata_for_inference(row_limit: int = 5000) -> pd.DataFrame:
     a file upload.  Returns all columns from pace_training_v so the inference engine
     can score them directly via predict_dataframe().
 
-    Falls back to an empty DataFrame (and logs nothing) if Teradata is unavailable,
-    so the caller can handle the fallback gracefully.
+    Falls back to an empty DataFrame if Teradata is unavailable; the caller handles
+    the fallback gracefully.
     """
     try:
         td_host = os.getenv("TD_HOST", "")
@@ -581,7 +578,9 @@ def load_teradata_for_inference(row_limit: int = 5000) -> pd.DataFrame:
         conn.close()
         return df
 
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.warning("PACE: load_teradata_for_inference failed: %s", e)
         return pd.DataFrame()
 
 
@@ -624,7 +623,6 @@ def load_shipments_with_fallback(n_mock: int = 300) -> pd.DataFrame:
     return df
 
 
-# ── Added from teammate ───────────────────────────────────────────────────────
 def load_accessorial_with_fallback(row_limit: int = 2000) -> pd.DataFrame:
     """
     Load accessorial charges with fallback to mock data if Azure is unavailable.
@@ -658,7 +656,9 @@ def load_accessorial_with_fallback(row_limit: int = 2000) -> pd.DataFrame:
             df["total_cost_usd"] = base + acc
 
         return df
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.warning("PACE: load_accessorial_with_fallback mock-data path failed: %s", e)
         return pd.DataFrame()
 
 
@@ -704,8 +704,9 @@ def ensure_model_results_table(_conn) -> None:
         cursor = _conn.cursor()
         cursor.execute(ddl)
         _conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.warning("PACE: ensure_model_results_table DDL failed: %s", e)
 
 
 def write_model_result(

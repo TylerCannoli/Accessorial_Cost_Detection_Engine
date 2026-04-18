@@ -1,4 +1,3 @@
-# File: pages/0_Home.py
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
 from utils.database import load_shipments_with_fallback
-from utils.styling import inject_css, sidebar_account
+from utils.styling import inject_css, sidebar_account, inject_metric_wrap_css
 
 st.set_page_config(page_title="PACE — Home", page_icon="🏠",
                    layout="wide", initial_sidebar_state="expanded")
@@ -19,7 +18,6 @@ username = st.session_state.get("username", "User")
 display_name = str(username).split("@")[0].replace(".", " ").replace("_", " ").title()
 sidebar_account(username)
 
-# ── Load data — upload session state awareness from teammate ──────────────────
 if st.session_state.get("upload_scored") is not None:
     df_all = st.session_state["upload_scored"].copy()
     st.success(
@@ -33,7 +31,6 @@ elif st.session_state.get("upload_df") is not None:
 else:
     df_all = load_shipments_with_fallback()
 
-# ── Defensive column defaults from teammate ───────────────────────────────────
 defaults = {
     "shipment_id": range(1, len(df_all) + 1),
     "ship_date":   pd.Timestamp.today(),
@@ -122,13 +119,10 @@ def _popup_breakdown():
     st.plotly_chart(_build_accessorial_by_carrier_fig(df_all, height=480), use_container_width=True)
 
 
-# ── Filters — teammate's carrier/facility/tier dropdowns added ────────────────
-# ← teammate: null-safe min/max date calculation
 valid_dates = df_all["ship_date_dt"].dropna()
 min_d = valid_dates.min().date() if not valid_dates.empty else None
 max_d = valid_dates.max().date() if not valid_dates.empty else None
 
-# ← teammate: carrier/facility/tier filter options
 carriers = ["All"]
 if "carrier" in df_all.columns:
     carriers += sorted(df_all["carrier"].dropna().astype(str).unique().tolist())
@@ -171,7 +165,6 @@ with st.expander("Filters", expanded=False):
 # ── Apply filters ─────────────────────────────────────────────────────────────
 df = df_all.copy()
 
-# ← teammate: inclusive end-of-day date filtering
 if date_range and isinstance(date_range, tuple) and len(date_range) == 2 and "ship_date_dt" in df.columns:
     start_dt = pd.Timestamp(date_range[0])
     end_dt   = pd.Timestamp(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
@@ -207,26 +200,7 @@ accessorial_rate  = (
 )
 
 # KPI text wrapping fix
-st.markdown("""
-<style>
-div[data-testid="stMetric"] label[data-testid="stMetricLabel"] > div,
-div[data-testid="stMetric"] label[data-testid="stMetricLabel"] p,
-div[data-testid="stMetricValue"],
-div[data-testid="stMetricValue"] > div {
-    white-space: normal !important;
-    overflow-wrap: anywhere !important;
-    word-break: break-word !important;
-}
-div[data-testid="stMetricValue"] > div,
-div[data-testid="stMetricValue"] > div > div {
-    font-size: clamp(1.05rem, 1.35vw, 1.5rem) !important;
-    line-height: 1.25 !important;
-}
-div[data-testid="stMetric"] {
-    min-height: 132px !important;
-}
-</style>
-""", unsafe_allow_html=True)
+inject_metric_wrap_css()
 
 
 def _fmt_dollars(v: float) -> str:

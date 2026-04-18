@@ -39,7 +39,6 @@ from pipeline.config import (
 
 # ── Hyperparameters ───────────────────────────────────────────────
 class HyperParameters:
-    """Represent the HyperParameters component."""
     n_layers: int = 3
     n_heads: int = 8
     attn_dropout: float = 0.1
@@ -58,7 +57,6 @@ class HyperParameters:
     random_state: int = 42
 
     def compute_embedding_dim(self, cardinality: int) -> int:
-        """Handle compute embedding dim."""
         dim = int(round(self.embed_base_factor * (cardinality ** self.embed_exponent)))
         return max(self.embed_min_dim, min(self.embed_max_dim, dim))
 
@@ -84,7 +82,6 @@ def get_row_count() -> int:
 
 
 def fetch_chunk(offset: int, chunk_size: int) -> pd.DataFrame:
-    """Handle fetch chunk."""
     query = f"""
     SELECT * FROM {TD_DATABASE}.{TD_VIEW}
     QUALIFY ROW_NUMBER() OVER (ORDER BY {ID_COLUMN} ASC)
@@ -95,7 +92,6 @@ def fetch_chunk(offset: int, chunk_size: int) -> pd.DataFrame:
 
 
 def load_data() -> pd.DataFrame:
-    """Handle load data."""
     total_rows = get_row_count()
     offsets = list(range(0, total_rows, CHUNK_SIZE))
     print(f"Loading {len(offsets)} chunks using {NUM_THREADS} threads...")
@@ -144,14 +140,11 @@ def load_data_from_csv(csv_path: str, max_rows: int = None) -> pd.DataFrame:
 
 # ── Categorical encoder ───────────────────────────────────────────
 class CategoricalEncoder:
-    """Represent the CategoricalEncoder component."""
     def __init__(self):
-        """Handle init."""
         self.encoders: Dict[str, LabelEncoder] = {}
         self.cardinalities: Dict[str, int] = {}
 
     def fit(self, df: pd.DataFrame, cat_cols: List[str]) -> "CategoricalEncoder":
-        """Handle fit."""
         for col in cat_cols:
             le = LabelEncoder()
             vals = df[col].astype(str).fillna("__missing__")
@@ -161,7 +154,6 @@ class CategoricalEncoder:
         return self
 
     def transform(self, df: pd.DataFrame, cat_cols: List[str]) -> np.ndarray:
-        """Handle transform."""
         encoded = np.zeros((len(df), len(cat_cols)), dtype=np.int64)
         for i, col in enumerate(cat_cols):
             le = self.encoders[col]
@@ -176,28 +168,22 @@ class CategoricalEncoder:
 
 # ── Dataset ───────────────────────────────────────────────────────
 class PACEDataset(Dataset):
-    """Represent the PACEDataset component."""
     def __init__(self, cat_data, cont_data, reg_targets, cls_targets):
-        """Handle init."""
         self.cat = torch.tensor(cat_data, dtype=torch.long)
         self.cont = torch.tensor(cont_data, dtype=torch.float32)
         self.reg = torch.tensor(reg_targets, dtype=torch.float32)
         self.cls = torch.tensor(cls_targets, dtype=torch.long)
 
     def __len__(self):
-        """Handle len."""
         return len(self.reg)
 
     def __getitem__(self, idx):
-        """Handle getitem."""
         return self.cat[idx], self.cont[idx], self.reg[idx], self.cls[idx]
 
 
 # ── Model ─────────────────────────────────────────────────────────
 class FeatureTokenizer(nn.Module):
-    """Represent the FeatureTokenizer component."""
     def __init__(self, cat_cardinalities, cat_embed_dims, n_continuous, token_dim):
-        """Handle init."""
         super().__init__()
         self.cat_embeddings = nn.ModuleList()
         self.cat_projections = nn.ModuleList()
@@ -210,7 +196,6 @@ class FeatureTokenizer(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, token_dim))
 
     def forward(self, x_cat, x_cont):
-        """Handle forward."""
         batch_size = x_cat.size(0)
         tokens = []
         for i, (emb, proj) in enumerate(zip(self.cat_embeddings, self.cat_projections)):
@@ -223,11 +208,9 @@ class FeatureTokenizer(nn.Module):
 
 
 class PACETransformer(nn.Module):
-    """Represent the PACETransformer component."""
     def __init__(self, cat_cardinalities, cat_embed_dims, n_continuous,
                  token_dim, n_layers, n_heads, ffn_multiplier,
                  attn_dropout, ffn_dropout, n_classes):
-        """Handle init."""
         super().__init__()
         self.tokenizer = FeatureTokenizer(
             cat_cardinalities, cat_embed_dims, n_continuous, token_dim
@@ -249,7 +232,6 @@ class PACETransformer(nn.Module):
         )
 
     def forward(self, x_cat, x_cont):
-        """Handle forward."""
         tokens = self.tokenizer(x_cat, x_cont)
         tokens = self.attn_dropout(tokens)
         encoded = self.transformer(tokens)
@@ -271,7 +253,6 @@ def get_device():
 
 
 def build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=None):
-    """Handle build model."""
     cardinalities = [cat_encoder.cardinalities[c] for c in cat_cols]
     embed_dims = [hp.compute_embedding_dim(c) for c in cardinalities]
     token_dim = hp.token_dim
@@ -299,7 +280,6 @@ def build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=None):
 
 # ── Training loop ─────────────────────────────────────────────────
 def train_one_epoch(model, loader, reg_crit, cls_crit, optimizer, device):
-    """Handle train one epoch."""
     model.train()
     total_loss, n = 0, 0
     for cat, cont, reg_t, cls_t in loader:
@@ -319,7 +299,6 @@ def train_one_epoch(model, loader, reg_crit, cls_crit, optimizer, device):
 
 @torch.no_grad()
 def evaluate(model, loader, reg_crit, cls_crit, device):
-    """Handle evaluate."""
     model.eval()
     total_loss, n = 0, 0
     reg_preds, reg_trues, cls_preds, cls_trues = [], [], [], []
@@ -343,7 +322,6 @@ def evaluate(model, loader, reg_crit, cls_crit, device):
 
 # ── Main pipeline ─────────────────────────────────────────────────
 def run_pipeline(csv_path: str = None, max_rows: int = None):
-    """Handle run pipeline."""
     hp = HyperParameters()
 
     print("=" * 60)
@@ -388,7 +366,6 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     scaler = StandardScaler()
 
     def make_dataset(frame, fit_scaler=False):
-        """Handle make dataset."""
         cat_data  = cat_encoder.transform(frame, cat_cols)
         cont_data = frame[cont_cols].fillna(0).values.astype(np.float32)
         if fit_scaler:

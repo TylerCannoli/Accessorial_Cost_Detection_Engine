@@ -1,4 +1,3 @@
-# File: pages/3_Shipments.py
 import os
 import sys
 import pandas as pd
@@ -13,6 +12,7 @@ from utils.styling import (
     inject_css, sidebar_account,
     NAVY_500,
     TIER_BG_FG, CHARGE_COLORS,
+    risk_score_to_label, search_dataframe,
 )
 from pipeline.config import CHARGE_TYPE_LABELS, is_pace_model_ready
 
@@ -46,12 +46,7 @@ if "risk_label" not in df_all.columns:
     if "risk_tier" in df_all.columns:
         df_all["risk_label"] = df_all["risk_tier"]
     else:
-        df_all["risk_label"] = df_all["risk_score_pct"].apply(
-            lambda s: "Critical" if s >= 75 else
-                      "High"     if s >= 50 else
-                      "Medium"   if s >= 25 else
-                      "Low"      if s > 0  else "None"
-        )
+        df_all["risk_label"] = df_all["risk_score_pct"].apply(risk_score_to_label)
 
 if "charge_type" not in df_all.columns:
     df_all["charge_type"] = df_all.get("accessorial_type", "Unknown")
@@ -135,7 +130,6 @@ if "selected_shipment" not in st.session_state:
 
 # ── Detail view ───────────────────────────────────────────────────
 def render_detail(row: pd.Series):
-    """Handle render detail."""
     label   = str(row.get("risk_label", row.get("risk_tier", "Unknown")))
     score   = float(row.get("risk_score_pct", row.get("risk_score", 0) * 100))
     charge  = str(row.get("charge_type", row.get("accessorial_type", "Unknown")))
@@ -447,14 +441,7 @@ else:
         label_visibility="collapsed",
     )
     if search.strip():
-        str_cols = df.select_dtypes(include=["object"]).columns
-        mask = pd.Series(False, index=df.index)
-        for col in str_cols:
-            mask |= (
-                df[col].astype(str)
-                .str.contains(search.strip(), case=False, na=False)
-            )
-        df = df[mask]
+        df = search_dataframe(df, search)
 
     # ── Build display columns ─────────────────────────────────────
     candidate_cols = [

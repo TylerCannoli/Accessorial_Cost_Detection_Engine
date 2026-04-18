@@ -18,7 +18,6 @@ Adaptability:
   update itself and save the new version to disk automatically.
 """
 import os
-import hashlib
 
 import joblib
 import numpy as np
@@ -40,7 +39,7 @@ _DERIVABLE = {"day_of_week", "month", "had_accessorial"}
 
 # ── Tier thresholds ───────────────────────────────────────────────────────────
 def score_to_tier(score: float) -> str:
-    """Handle score to tier."""
+    """Map a 0–1 risk probability to a Low/Medium/High tier label."""
     if score >= 0.67:
         return "High"
     if score >= 0.34:
@@ -89,17 +88,14 @@ def _prepare_features(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Model persistence ─────────────────────────────────────────────────────────
 def _versioned_path(version: int) -> str:
-    """Handle versioned path."""
     return os.path.join(_MODEL_DIR, f"pace_risk_model_v{version}.joblib")
 
 
 def save_model(model, metrics: dict):
-    """Handle save model."""
     from utils.model_config import load as cfg_load, record_training
     cfg = cfg_load()
     next_version = cfg.get("version", 0) + 1
 
-    # Save versioned copy + overwrite current
     versioned = _versioned_path(next_version)
     payload   = {"model": model, "metrics": metrics, "version": next_version}
     joblib.dump(payload, versioned)
@@ -133,7 +129,9 @@ def rollback_to_version(version: int) -> bool:
         joblib.dump(data, _MODEL_PATH)
         get_risk_model.clear()
         return True
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.warning("PACE: rollback_to_version(%s) failed: %s", version, e)
         return False
 
 
@@ -150,8 +148,9 @@ def list_saved_versions() -> list[dict]:
                     "metrics":  data.get("metrics", {}),
                     "file":     fname,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.warning("PACE: could not load model version file %s: %s", fname, e)
     return sorted(versions, key=lambda x: x["version"], reverse=True)
 
 
@@ -284,7 +283,6 @@ def incremental_update(df_new: pd.DataFrame) -> dict:
 
     existing_model, _ = load_model_from_disk()
 
-    # If no existing model, do a full retrain instead
     if existing_model is None:
         return retrain(df_new)
 
@@ -298,10 +296,7 @@ def incremental_update(df_new: pd.DataFrame) -> dict:
     X = df_new[_ALL_COLS]
     y = df_new[_TARGET].astype(int)
 
-    # Extract the underlying LightGBM booster from the sklearn Pipeline
     lgbm_step = existing_model.named_steps["lgbm"]
-
-    # Transform X using the existing preprocessor
     pre = existing_model.named_steps["pre"]
     X_transformed = pre.transform(X)
 
@@ -309,9 +304,10 @@ def incremental_update(df_new: pd.DataFrame) -> dict:
         X_transformed, y, test_size=0.20, random_state=42
     )
 
-    # Continue training from existing booster
+    # Warm-start from the existing booster so prior knowledge is preserved.
+    # Fewer trees here (100) because we're adding an incremental batch, not retraining.
     updated_lgbm = LGBMClassifier(
-        n_estimators=100,        # fewer trees — just the incremental batch
+        n_estimators=100,
         learning_rate=0.05,
         num_leaves=31,
         class_weight="balanced",
@@ -324,7 +320,6 @@ def incremental_update(df_new: pd.DataFrame) -> dict:
         init_model=lgbm_step.booster_,
     )
 
-    # Swap the lgbm step in the pipeline
     from sklearn.pipeline import Pipeline
     updated_pipeline = Pipeline([
         ("pre",  pre),
@@ -348,127 +343,3 @@ def incremental_update(df_new: pd.DataFrame) -> dict:
     return metrics
 
 
-def data_hash(df: pd.DataFrame) -> int:
-    """Stable hash of a DataFrame for use as Streamlit cache key."""
-    h = hashlib.md5(pd.util.hash_pandas_object(df, index=False).values, usedforsecurity=False).hexdigest()
-    return int(h, 16) % (2 ** 31)
-
-
-# ── Inference ─────────────────────────────────────────────────────────────────
-def predict_risk(
-    model,
-    carrier: str,
-    facility: str,
-    appt_type: str,
-    weight: float,
-    miles: float,
-    df_ref: pd.DataFrame,
-    origin_state: str = "Unknown",
-    dest_state: str = "Unknown",
-    day_of_week: int | None = None,
-    month: int | None = None,
-    avg_dwell_hrs: float = 3.0,
-) -> dict | None:
-    """
-    Predict accessorial risk for a single shipment.
-
-    Returns dict with:
-        score   — float 0–1 (probability of accessorial charge)
-        tier    — "Low" | "Medium" | "High"
-        color   — hex color matching tier
-        factors — list of (label, detail, severity) tuples
-    Returns None if model is unavailable.
-    """
-    if model is None:
-        return None
-
-    import datetime
-    if day_of_week is None:
-        day_of_week = datetime.date.today().weekday()
-    if month is None:
-        month = datetime.date.today().month
-
-    X = pd.DataFrame([{
-        "carrier":          carrier,
-        "facility":         facility,
-        "appointment_type": appt_type,
-        "origin_state":     origin_state,
-        "dest_state":       dest_state,
-        "weight_lbs":       float(weight),
-        "miles":            float(miles),
-        "day_of_week":      int(day_of_week),
-        "month":            int(month),
-        "avg_dwell_hrs":    float(avg_dwell_hrs),
-    }])
-
-    try:
-        score = float(np.clip(model.predict_proba(X)[0][1], 0.02, 0.97))
-    except Exception:
-        return None
-
-    tier  = score_to_tier(score)
-    color = {"Low": "#34D399", "Medium": "#FCD34D", "High": "#F87171"}[tier]
-
-    # ── Explanation factors ───────────────────────────────────────────────────
-    factors = []
-    fleet_avg = df_ref["risk_score"].mean() if "risk_score" in df_ref.columns else 0.45
-
-    # Carrier risk vs fleet
-    if "risk_score" in df_ref.columns and "carrier" in df_ref.columns:
-        c_avg = df_ref.groupby("carrier")["risk_score"].mean().get(carrier)
-        if c_avg is not None:
-            if c_avg > fleet_avg * 1.15:
-                factors.append(("Carrier history",
-                    f"{carrier} averages {c_avg:.0%} risk vs fleet avg {fleet_avg:.0%}", "high"))
-            elif c_avg < fleet_avg * 0.85:
-                factors.append(("Carrier history",
-                    f"{carrier} averages {c_avg:.0%} risk — below fleet avg {fleet_avg:.0%}", "low"))
-
-    # Appointment type
-    if appt_type == "Live":
-        factors.append(("Live appointment",
-            "Live unloads have significantly higher detention risk than drop trailers", "high"))
-    else:
-        factors.append(("Drop trailer",
-            "Drop trailers reduce on-site wait time and lower detention risk", "low"))
-
-    # Weight
-    avg_wt = df_ref["weight_lbs"].mean() if "weight_lbs" in df_ref.columns else 20_000
-    if weight > avg_wt * 1.35:
-        factors.append(("Heavy load",
-            f"{weight:,.0f} lbs is well above fleet avg of {avg_wt:,.0f} lbs", "high"))
-    elif weight < avg_wt * 0.55:
-        factors.append(("Light load",
-            f"{weight:,.0f} lbs is well below fleet avg of {avg_wt:,.0f} lbs", "low"))
-
-    # Miles
-    avg_mi = df_ref["miles"].mean() if "miles" in df_ref.columns else 500
-    if miles > avg_mi * 1.5:
-        factors.append(("Long haul",
-            f"{miles:,.0f} mi exceeds fleet avg of {avg_mi:,.0f} mi — more layover exposure", "high"))
-    elif miles < avg_mi * 0.4:
-        factors.append(("Short haul",
-            f"{miles:,.0f} mi is well below fleet avg of {avg_mi:,.0f} mi", "low"))
-
-    # Day of week
-    if day_of_week == 4:
-        factors.append(("Friday dispatch",
-            "Friday shipments have 2× higher weekend detention risk", "high"))
-
-    # Month / peak season
-    if month in (10, 11, 12):
-        factors.append(("Peak season (Q4)",
-            "Oct–Dec capacity crunch raises accessorial incidence by 15–25%", "high"))
-
-    # Facility
-    if "risk_score" in df_ref.columns and "facility" in df_ref.columns:
-        f_avg = df_ref.groupby("facility")["risk_score"].mean().get(facility)
-        if f_avg is not None and f_avg > fleet_avg * 1.2:
-            factors.append(("High-risk facility",
-                f"{facility} averages {f_avg:.0%} risk — above fleet avg", "high"))
-
-    if not factors:
-        factors.append(("Balanced profile",
-            "Carrier, route, and load are all near fleet averages", "neutral"))
-
-    return {"score": score, "tier": tier, "color": color, "factors": factors[:3]}

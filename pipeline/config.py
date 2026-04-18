@@ -108,8 +108,8 @@ CTGAN_DISCRETE_COLUMNS = CATEGORICAL_COLUMNS + [
 ]
 
 # ── Phase 2 enrichment columns ─────────────────────────────────────────
-# Added in Phase 2 retraining.  These are non-leaking predictors —
-# all available at carrier booking time, none derived from inspection outcomes.
+# Non-leaking predictors: all available at carrier booking time,
+# none derived from inspection outcomes.
 
 # Carrier-level historical OOS rates (from Vehicle_Inspection_NOT_SMS)
 CARRIER_HISTORY_COLUMNS = [
@@ -180,7 +180,6 @@ MARKET_SIGNAL_COLUMNS = [
     "atri_reefer_multiplier",
 ]
 
-# All new Phase 2 continuous columns (appended to CONTINUOUS_COLUMNS for retraining)
 PHASE2_NEW_COLUMNS = (
     CARRIER_HISTORY_COLUMNS +
     SMS_PERCENTILE_COLUMNS +
@@ -206,8 +205,7 @@ LEAKING_COLUMNS = [
     "hm_viol",
 ]
 
-# CONTINUOUS_COLUMNS for Phase 2 retraining:
-# Start with original, remove leakers, add new enrichment columns.
+# CONTINUOUS_COLUMNS without target-leaking violation counts, plus Phase 2 enrichment.
 CONTINUOUS_COLUMNS_V2 = (
     [c for c in CONTINUOUS_COLUMNS if c not in LEAKING_COLUMNS] +
     PHASE2_NEW_COLUMNS

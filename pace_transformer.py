@@ -53,18 +53,29 @@ DOT_COL    = "dot_number"
 REG_TARGET = "accessorial_risk_score"   # 0–100 continuous
 CLS_TARGET = "accessorial_type"         # 0–5 integer
 
-N_CLASSES = 6
-CHARGE_TYPE_LABELS = [
-    "No Charge",
-    "Detention",
-    "Safety Surcharge",
-    "Compliance Fee",
-    "Hazmat Fee",
-    "High Risk / Multiple",
-]
+# N_CLASSES and CHARGE_TYPE_LABELS are the authoritative values from pipeline/config.py.
+# Import them rather than duplicating literals that could drift.
+# NOTE: This script cannot import CONTINUOUS_COLUMNS / CATEGORICAL_COLUMNS from
+# pipeline/config.py because it targets the original CTGAN view schema (pre-Phase-2
+# enrichment).  If the view schema changes, update the lists here to match.
+try:
+    from pipeline.config import N_CLASSES, CHARGE_TYPE_LABELS
+except ImportError:
+    # Standalone execution without the pipeline package on PYTHONPATH
+    N_CLASSES = 6
+    CHARGE_TYPE_LABELS = [
+        "No Charge",
+        "Detention",
+        "Safety Surcharge",
+        "Compliance Fee",
+        "Hazmat Fee",
+        "High Risk / Multiple",
+    ]
 
+# insp_level_id is numeric (FMCSA inspection levels 1–7) — treated as continuous
+# to match pipeline/config.py.  Do NOT add it to CATEGORICAL_COLUMNS here.
 CATEGORICAL_COLUMNS = [
-    "report_state", "county_code_state", "insp_level_id",
+    "report_state", "county_code_state",
     "carrier_status_code", "carrier_carrier_operation", "carrier_fleetsize",
     "carrier_hm_ind", "carrier_phy_country", "carrier_phy_state",
     "carrier_safety_rating",
@@ -81,6 +92,7 @@ CATEGORICAL_COLUMNS = [
 
 CONTINUOUS_COLUMNS = [
     "insp_year", "insp_month", "insp_dow", "insp_day",
+    "insp_level_id",
     "is_holiday", "is_near_holiday", "time_weight", "carrier_add_date",
     "carrier_mcs150_mileage", "carrier_mcs150_mileage_year",
     "carrier_truck_units", "carrier_power_units",
@@ -159,14 +171,11 @@ CLS_WEIGHT          = 1.0
 # ════════════════════════════════════════════════════════════════════════════
 
 class PACECategoricalEncoder:
-    """Represent the PACECategoricalEncoder component."""
     def __init__(self):
-        """Handle init."""
         self.value_maps:   Dict[str, Dict[str, int]] = {}
         self.cardinalities: Dict[str, int]            = {}
 
     def fit(self, df: pd.DataFrame, cat_cols: List[str]) -> "PACECategoricalEncoder":
-        """Handle fit."""
         for col in cat_cols:
             vals = sorted(df[col].fillna("UNKNOWN").astype(str).unique().tolist())
             self.value_maps[col]   = {v: i + 1 for i, v in enumerate(vals)}
@@ -174,7 +183,6 @@ class PACECategoricalEncoder:
         return self
 
     def transform(self, df: pd.DataFrame, cat_cols: List[str]) -> np.ndarray:
-        """Handle transform."""
         out = np.zeros((len(df), len(cat_cols)), dtype=np.int64)
         for j, col in enumerate(cat_cols):
             vmap = self.value_maps[col]
@@ -191,21 +199,17 @@ class PACECategoricalEncoder:
 # ════════════════════════════════════════════════════════════════════════════
 
 class PACEDataset(Dataset):
-    """Represent the PACEDataset component."""
     def __init__(self, x_cat: np.ndarray, x_cont: np.ndarray,
                  y_reg: np.ndarray, y_cls: np.ndarray):
-        """Handle init."""
         self.x_cat  = torch.tensor(x_cat,  dtype=torch.long)
         self.x_cont = torch.tensor(x_cont, dtype=torch.float32)
         self.y_reg  = torch.tensor(y_reg,  dtype=torch.float32)
         self.y_cls  = torch.tensor(y_cls,  dtype=torch.long)
 
     def __len__(self):
-        """Handle len."""
         return len(self.y_reg)
 
     def __getitem__(self, idx):
-        """Handle getitem."""
         return self.x_cat[idx], self.x_cont[idx], self.y_reg[idx], self.y_cls[idx]
 
 
@@ -214,10 +218,8 @@ class PACEDataset(Dataset):
 # ════════════════════════════════════════════════════════════════════════════
 
 class FeatureTokenizer(nn.Module):
-    """Represent the FeatureTokenizer component."""
     def __init__(self, cat_cardinalities: List[int], cat_embed_dims: List[int],
                  n_continuous: int, token_dim: int):
-        """Handle init."""
         super().__init__()
         self.cat_embeddings  = nn.ModuleList()
         self.cat_projections = nn.ModuleList()
@@ -230,7 +232,6 @@ class FeatureTokenizer(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, token_dim))
 
     def forward(self, x_cat: torch.Tensor, x_cont: torch.Tensor) -> torch.Tensor:
-        """Handle forward."""
         B = x_cat.size(0)
         tokens = []
         for i, (emb, proj) in enumerate(zip(self.cat_embeddings, self.cat_projections)):
@@ -243,12 +244,10 @@ class FeatureTokenizer(nn.Module):
 
 
 class PACETransformer(nn.Module):
-    """Represent the PACETransformer component."""
     def __init__(self, cat_cardinalities: List[int], cat_embed_dims: List[int],
                  n_continuous: int, token_dim: int,
                  n_layers: int, n_heads: int, ffn_multiplier: float,
                  attn_dropout: float, ffn_dropout: float, n_classes: int):
-        """Handle init."""
         super().__init__()
         self.tokenizer = FeatureTokenizer(
             cat_cardinalities, cat_embed_dims, n_continuous, token_dim
@@ -271,7 +270,6 @@ class PACETransformer(nn.Module):
         )
 
     def forward(self, x_cat: torch.Tensor, x_cont: torch.Tensor):
-        """Handle forward."""
         tokens  = self.tokenizer(x_cat, x_cont)
         tokens  = self.attn_dropout(tokens)
         encoded = self.transformer(tokens)
@@ -294,7 +292,6 @@ def compute_embed_dim(cardinality: int) -> int:
 # ════════════════════════════════════════════════════════════════════════════
 
 def load_data() -> pd.DataFrame:
-    """Handle load data."""
     needed = (
         [ID_COL, DOT_COL]
         + CATEGORICAL_COLUMNS
@@ -324,7 +321,6 @@ def load_data() -> pd.DataFrame:
 # ════════════════════════════════════════════════════════════════════════════
 
 def preprocess(df: pd.DataFrame):
-    """Handle preprocess."""
     print("[3/7] Preprocessing...")
 
     # Drop rows missing either target
@@ -376,7 +372,6 @@ def preprocess(df: pd.DataFrame):
 
 
 def split_data(x_cat, x_cont, y_reg, y_cls):
-    """Handle split data."""
     n = len(y_reg)
     idx = np.random.permutation(n)
     train_end = int(n * TRAIN_FRAC)
@@ -386,7 +381,6 @@ def split_data(x_cat, x_cont, y_reg, y_cls):
     print(f"      Split → train {len(tr):,} / val {len(va):,} / test {len(te):,}")
 
     def subset(i):
-        """Handle subset."""
         return x_cat[i], x_cont[i], y_reg[i], y_cls[i]
 
     return subset(tr), subset(va), subset(te)
@@ -397,7 +391,6 @@ def split_data(x_cat, x_cont, y_reg, y_cls):
 # ════════════════════════════════════════════════════════════════════════════
 
 def build_model(cat_encoder: PACECategoricalEncoder) -> PACETransformer:
-    """Handle build model."""
     cardinalities = [cat_encoder.cardinalities[c] for c in CATEGORICAL_COLUMNS]
     embed_dims    = [compute_embed_dim(card) for card in cardinalities]
     token_dim     = ((TOKEN_DIM + 8 - 1) // 8) * 8   # round to multiple of 8
@@ -420,7 +413,6 @@ def build_model(cat_encoder: PACECategoricalEncoder) -> PACETransformer:
 
 
 def train(model, train_set, val_set, y_cls_train: np.ndarray, device):
-    """Handle train."""
     print("[5/7] Training...")
     model.to(device)
 
@@ -522,7 +514,6 @@ def train(model, train_set, val_set, y_cls_train: np.ndarray, device):
 # ════════════════════════════════════════════════════════════════════════════
 
 def evaluate(model, test_set, device) -> dict:
-    """Handle evaluate."""
     print("[6/7] Evaluating on test set...")
     model.eval()
     loader = DataLoader(
@@ -555,7 +546,9 @@ def evaluate(model, test_set, device) -> dict:
 
     try:
         auc = float(roc_auc_score(y_cls_true, y_cls_proba, multi_class="ovr", average="weighted"))
-    except Exception:
+    except ValueError as e:
+        import logging
+        logging.warning("PACE: AUC-ROC skipped (single-class batch or shape mismatch): %s", e)
         auc = 0.0
 
     print(f"\n  Regression  — MAE: {mae:.2f}   RMSE: {rmse:.2f}")
@@ -577,7 +570,6 @@ def evaluate(model, test_set, device) -> dict:
 
 def save_artifacts(model, cat_encoder, scaler, risk_score_max,
                    history, test_metrics, device):
-    """Handle save artifacts."""
     print("[7/7] Saving artifacts...")
 
     # Model weights
@@ -647,7 +639,6 @@ def save_artifacts(model, cat_encoder, scaler, risk_score_max,
 # ════════════════════════════════════════════════════════════════════════════
 
 def main():
-    """Handle main."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     if device.type == "cuda":

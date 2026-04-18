@@ -172,7 +172,6 @@ def enrich_dataframe_miles(df, origin_col: str = "origin_city",
             lane_cache[key] = res["miles"]
 
     def _lookup(row):
-        """Handle lookup."""
         key = (str(row[origin_col]), str(row[dest_col]))
         return lane_cache.get(key, row.get("miles", None))
 

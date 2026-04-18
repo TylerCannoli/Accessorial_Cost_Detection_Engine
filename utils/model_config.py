@@ -33,7 +33,7 @@ _DEFAULTS = {
 
 
 def load() -> dict:
-    """Handle load."""
+    """Load model config from disk, merging with defaults for any missing keys."""
     if not os.path.exists(_CONFIG_PATH):
         return dict(_DEFAULTS)
     try:
@@ -47,12 +47,13 @@ def load() -> dict:
         if "metrics" in data:
             merged["metrics"] = {**_DEFAULTS["metrics"], **data["metrics"]}
         return merged
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.warning("PACE: model_config load failed (%s), using defaults: %s", _CONFIG_PATH, e)
         return dict(_DEFAULTS)
 
 
 def save(config: dict):
-    """Handle save."""
     with open(_CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2, default=str)
 
@@ -96,7 +97,7 @@ def add_pending_records(n: int) -> dict:
 
 
 def should_auto_update() -> bool:
-    """Handle should auto update."""
+    """Return True when pending_records has reached the configured threshold."""
     cfg = load()
     if not cfg.get("auto_update_enabled", True):
         return False
@@ -113,14 +114,12 @@ def set_mode(mode: str):
 
 
 def set_thresholds(high: float, medium: float):
-    """Set thresholds."""
     cfg = load()
     cfg["tier_thresholds"] = {"high": high, "medium": medium}
     save(cfg)
 
 
 def set_auto_update(enabled: bool, threshold: int):
-    """Set auto update."""
     cfg = load()
     cfg["auto_update_enabled"]    = enabled
     cfg["auto_update_threshold"]  = threshold

@@ -15,21 +15,21 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from datetime import datetime
 
 ENRICH_DIR = Path(__file__).parents[2] / "outputs" / "enrichment"
 ARTIFACTS_DIR = Path(__file__).parents[2] / "models"
 
 
-def _load_json(path: Path) -> Dict:
+def _load_json(path: Path) -> Dict[str, Any]:
     if path.exists():
         with open(path) as f:
             return json.load(f)
     return {}
 
 
-def _load_csv_lookup(filename: str, key_col: str) -> Dict[str, Dict]:
+def _load_csv_lookup(filename: str, key_col: str) -> Dict[str, Dict[str, Any]]:
     """Load an enrichment CSV as a dict keyed by key_col."""
     path = ENRICH_DIR / filename
     if not path.exists():
@@ -65,7 +65,7 @@ class DataNormalizer:
         self._col_medians: Dict[str, float] = {}
         self._load_medians()
 
-    def _load_freight_rates(self) -> Dict[str, Dict]:
+    def _load_freight_rates(self) -> Dict[Tuple[int, int], Dict[str, Any]]:
         """Load freight_rate_features.csv keyed by (year, month) tuple."""
         path = ENRICH_DIR / "freight_rate_features.csv"
         if not path.exists():
@@ -94,8 +94,9 @@ class DataNormalizer:
             if scaler is not None and hasattr(scaler, "mean_"):
                 for col, mean_val in zip(cont_cols, scaler.mean_):
                     self._col_medians[col] = float(mean_val)
-        except Exception:
-            pass  # Artifacts not available yet (pre-first-train) — silently skip
+        except Exception as e:
+            import logging
+            logging.warning("PACE: could not load training artifacts from %s: %s", artifacts_path, e)
 
     def fill(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fill all missing PACE features into the DataFrame."""
@@ -207,7 +208,7 @@ class DataNormalizer:
                 )
         return df
 
-    def coverage_report(self, df: pd.DataFrame) -> Dict:
+    def coverage_report(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Return a dict showing fill coverage before and after normalization."""
         from pipeline.config import CONTINUOUS_COLUMNS_V2, CATEGORICAL_COLUMNS
         all_cols = list(CONTINUOUS_COLUMNS_V2) + list(CATEGORICAL_COLUMNS)

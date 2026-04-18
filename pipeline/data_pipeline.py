@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import re
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from pipeline.config import (
     CONTINUOUS_COLUMNS,
     CATEGORICAL_COLUMNS,
@@ -539,7 +539,7 @@ class PACEDataPipeline:
         features = pipeline.process_dot(dot_number)
     """
  
-    def process_csv(self, df: pd.DataFrame) -> Dict:
+    def process_csv(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
         Full processing pipeline for CSV uploads.
  
@@ -552,21 +552,14 @@ class PACEDataPipeline:
             mapping     — column aliases that were applied
             ready       — bool, True if safe to run inference
         """
-        # Step 1: Normalize column names and detect aliases
         df, mapping = normalize_column_names(df)
- 
-        # Step 2: Detect schema
         schema = detect_schema(df)
- 
-        # Step 3: Convert legacy → PACE if needed
+
         if schema == "legacy":
             df = convert_legacy_to_pace(df)
             schema = "pace_converted"
- 
-        # Step 4: Validate
+
         errors, warnings, row_fail_mask = validate_dataframe(df, schema)
- 
-        # Step 5: Clean
         df_clean, clean_warnings = clean_dataframe(df)
         warnings.extend(clean_warnings)
  
@@ -583,30 +576,26 @@ class PACEDataPipeline:
             "fail_count":    int(row_fail_mask.sum()) if row_fail_mask is not None else 0,
         }
  
-    def process_manual(self, user_inputs: Dict) -> Dict:
+    def process_manual(self, user_inputs: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process manually entered shipment/carrier data.
  
         Fills missing fields with defaults and validates.
         Returns cleaned feature dict ready for inference.
         """
-        # Fill all missing fields with defaults
         features = dict(FEATURE_DEFAULTS)
         features.update({k: v for k, v in user_inputs.items() if v is not None})
- 
-        # Normalize aliases
+
         normalized = {}
         for k, v in features.items():
             canonical = COLUMN_ALIASES.get(k.lower().strip(), k)
             normalized[canonical] = v
- 
-        # Fix booleans
+
         for col in BOOL_COLS:
             if col in normalized:
                 val = str(normalized[col]).strip().upper()
                 normalized[col] = "Y" if val in ("TRUE", "YES", "1", "Y") else "N"
- 
-        # Coerce numerics
+
         for col in CONTINUOUS_COLUMNS:
             if col in normalized:
                 try:
@@ -617,15 +606,14 @@ class PACEDataPipeline:
                     normalized[col] = 0.0
             else:
                 normalized[col] = 0.0
- 
-        # Fill missing categoricals
+
         for col in CATEGORICAL_COLUMNS:
             if col not in normalized or normalized[col] is None:
                 normalized[col] = "UNKNOWN"
  
         return normalized
  
-    def process_dot(self, dot_number: int) -> Dict:
+    def process_dot(self, dot_number: int) -> Dict[str, Any]:
         """
         Process a DOT number lookup.
         Returns a minimal feature dict with DOT number set.
@@ -635,7 +623,7 @@ class PACEDataPipeline:
         features["dot_number"] = int(dot_number)
         return features
  
-    def get_column_report(self, df: pd.DataFrame) -> Dict:
+    def get_column_report(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
         Generate a column mapping report for display in the UI.
         Shows which columns were found, mapped, or are missing.
@@ -661,7 +649,7 @@ class PACEDataPipeline:
 _pipeline: Optional[PACEDataPipeline] = None
  
 def get_data_pipeline() -> PACEDataPipeline:
-    """Return data pipeline."""
+    """Return the module-level singleton pipeline instance."""
     global _pipeline
     if _pipeline is None:
         _pipeline = PACEDataPipeline()

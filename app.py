@@ -7,7 +7,7 @@ from utils.styling import remove_nav_toggle_fallback, inject_persistent_nav_hide
 
 
 def _bg_css() -> str:
-    """Handle bg css."""
+    """Return background CSS props; embeds the background.png as base64 if present."""
     img_path = os.path.join(os.path.dirname(__file__), "assets", "background.png")
     if os.path.exists(img_path):
         with open(img_path, "rb") as f:

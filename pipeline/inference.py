@@ -1,4 +1,3 @@
-from pipeline.pace_transformer import CategoricalEncoder  # noqa
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -8,13 +7,16 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from typing import Dict, List, Optional
-from pipeline.pace_transformer import CategoricalEncoder  # noqa
+from typing import Any, Dict, List, Optional
+# CategoricalEncoder must be importable before unpickling model artifacts —
+# pickle uses the live class to reconstruct saved encoder objects.
+from pipeline.pace_transformer import CategoricalEncoder  # noqa: F401
 from pipeline.config import (
     CONTINUOUS_COLUMNS, CATEGORICAL_COLUMNS, N_CLASSES,
     MODEL_WEIGHTS_PATH, MODEL_ARTIFACTS_PATH, CHARGE_TYPE_LABELS, DOT_COLUMN,
     TD_HOST, TD_USERNAME, TD_PASSWORD, TD_DATABASE,
 )
+from pipeline.data_pipeline import BOOL_COLS
 
 # ── Environment flag ──────────────────────────────────────────────
 # Set PACE_ENV=production on Oracle Cloud (daxori) to enable API enrichment.
@@ -35,9 +37,12 @@ if API_ENRICHMENT_ENABLED:
 # ══════════════════════════════════════════════════════════════════
 
 class FeatureTokenizer(nn.Module):
-    """Represent the FeatureTokenizer component."""
+    """
+    Projects each categorical and continuous feature into a shared token_dim space,
+    then prepends a learnable [CLS] token used by the classification head.
+    Architecture must exactly match the training-time definition in pace_transformer.py.
+    """
     def __init__(self, cat_cardinalities, cat_embed_dims, n_continuous, token_dim):
-        """Handle init."""
         super().__init__()
         self.cat_embeddings = nn.ModuleList()
         self.cat_projections = nn.ModuleList()
@@ -50,7 +55,6 @@ class FeatureTokenizer(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, token_dim))
 
     def forward(self, x_cat, x_cont):
-        """Handle forward."""
         batch_size = x_cat.size(0)
         tokens = []
         for i, (emb, proj) in enumerate(zip(self.cat_embeddings, self.cat_projections)):
@@ -63,11 +67,10 @@ class FeatureTokenizer(nn.Module):
 
 
 class PACETransformer(nn.Module):
-    """Represent the PACETransformer component."""
+    """FT-Transformer: dual-head (regression + classification) over tabular features."""
     def __init__(self, cat_cardinalities, cat_embed_dims, n_continuous,
                  token_dim, n_layers, n_heads, ffn_multiplier,
                  attn_dropout, ffn_dropout, n_classes):
-        """Handle init."""
         super().__init__()
         self.tokenizer = FeatureTokenizer(
             cat_cardinalities, cat_embed_dims, n_continuous, token_dim
@@ -87,7 +90,6 @@ class PACETransformer(nn.Module):
         )
 
     def forward(self, x_cat, x_cont):
-        """Handle forward."""
         tokens = self.tokenizer(x_cat, x_cont)
         tokens = self.attn_dropout(tokens)
         encoded = self.transformer(tokens)
@@ -115,7 +117,6 @@ class PACEInference:
 
     def __init__(self, weights_path: str = MODEL_WEIGHTS_PATH,
                  artifacts_path: str = MODEL_ARTIFACTS_PATH):
-        """Handle init."""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model       = None
         self.cat_encoder = None
@@ -128,7 +129,6 @@ class PACEInference:
     # ── Model loading ─────────────────────────────────────────────
 
     def _load(self, weights_path: str, artifacts_path: str):
-        """Handle load."""
         if not os.path.exists(weights_path):
             raise FileNotFoundError(
                 f"Model weights not found at {weights_path}. "
@@ -173,7 +173,7 @@ class PACEInference:
         print(f"PACE model loaded on {self.device}")
 
     def _compute_embed_dim(self, cardinality: int) -> int:
-        """Handle compute embed dim."""
+        """Rule of thumb: embed_dim ≈ 1.6 * cardinality^0.56, clamped to [8, 64]."""
         dim = int(round(1.6 * (cardinality ** 0.56)))
         return max(8, min(64, dim))
 
@@ -184,11 +184,7 @@ class PACEInference:
         df = df.copy()
 
         # Fix boolean-as-string columns
-        bool_cols = [
-            "sms_hm_flag", "sms_pc_flag", "sms_private_only",
-            "sms_authorized_for_hire", "sms_exempt_for_hire", "sms_private_property",
-        ]
-        for col in bool_cols:
+        for col in BOOL_COLS:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.strip().str.upper()
                 df[col] = df[col].map({"TRUE": "Y", "FALSE": "N"}).fillna("N")
@@ -245,7 +241,7 @@ class PACEInference:
         return "None"
 
     @torch.no_grad()
-    def predict_single(self, row: Dict) -> Dict:
+    def predict_single(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Predict from a single feature dict."""
         df      = pd.DataFrame([row])
         results = self.predict(df)
@@ -289,7 +285,7 @@ class PACEInference:
     def predict_dot(self, dot_number: int,
                     origin_lat: float = None,
                     origin_lon: float = None,
-                    origin_state: str = None) -> Dict:
+                    origin_state: str = None) -> Dict[str, Any]:
         """
         Look up a carrier by DOT number and predict accessorial risk.
 
@@ -324,7 +320,7 @@ class PACEInference:
             # Cluster path — Teradata historical lookup
             return self._predict_dot_teradata(dot_number)
 
-    def _predict_dot_teradata(self, dot_number: int) -> Dict:
+    def _predict_dot_teradata(self, dot_number: int) -> Dict[str, Any]:
         """Fallback: pull DOT record from Teradata and predict."""
         if not TD_HOST:
             import logging
@@ -362,11 +358,11 @@ class PACEInference:
 
     # ── Input method 2: Manual Shipment Input ─────────────────────
 
-    def predict_manual(self, user_inputs: Dict,
+    def predict_manual(self, user_inputs: Dict[str, Any],
                        origin_lat: float = None,
                        origin_lon: float = None,
                        origin_city: str = None,
-                       origin_state: str = None) -> Dict:
+                       origin_state: str = None) -> Dict[str, Any]:
         """
         Predict from manually entered shipment/carrier details.
 
@@ -516,7 +512,7 @@ class PACEInference:
 
     # ── Model info ────────────────────────────────────────────────
 
-    def model_info(self) -> Dict:
+    def model_info(self) -> Dict[str, Any]:
         """Return model metadata for display in the UI."""
         return {
             "device":           str(self.device),

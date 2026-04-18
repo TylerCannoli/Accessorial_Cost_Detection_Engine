@@ -1,4 +1,3 @@
-# File: pages/8_Admin.py
 import streamlit as st
 import sys, os
 
@@ -18,7 +17,7 @@ from utils.database import (
 )
 from utils.styling import inject_css, sidebar_account, ACCENT_SOFT, TEXT_PRIMARY, TEXT_SECONDARY
 import utils.model_config as mcfg
-from utils.risk_model import retrain, incremental_update, rollback_to_version, list_saved_versions, get_risk_model
+from utils.risk_model import retrain, incremental_update, rollback_to_version, list_saved_versions
 from utils.mock_data import generate_mock_shipments
 
 st.set_page_config(
@@ -113,12 +112,12 @@ with col_form:
     with st.container(border=True):
         st.markdown("#### Create User")
         with st.form("create_user_form"):
-            new_username = st.text_input("Username").strip().lower()  # ← sanitized from teammate
+            new_username = st.text_input("Username").strip().lower()
             new_password = st.text_input("Password", type="password")
             new_role = st.selectbox("Role", ["user", "admin"])
             submitted = st.form_submit_button(
                 "Create User",
-                use_container_width=True,                         # ← fixed: width="stretch" is invalid
+                use_container_width=True,
                 type="primary",
             )
             if submitted:
@@ -130,7 +129,7 @@ with col_form:
                     ok, msg = create_pace_user(conn, new_username, new_password, new_role)
                     if ok:
                         st.success(msg)
-                        clear_db_cache()                          # ← added from teammate
+                        clear_db_cache()
                         st.rerun()
                     else:
                         st.error(f"Failed: {msg}")
@@ -142,7 +141,7 @@ with col_users:
             st.warning("No database connection — showing fallback accounts only.")
             st.dataframe(
                 [{"username": "admin", "role": "admin"}, {"username": "user", "role": "user"}],
-                use_container_width=True,                         # ← fixed: width="stretch" is invalid
+                use_container_width=True,
                 hide_index=True,
             )
         else:
@@ -159,19 +158,19 @@ with col_users:
             users_df2 = get_pace_users(conn)
             deletable = []
 
-            if not users_df2.empty and "username" in users_df2.columns:  # ← safer column check from teammate
+            if not users_df2.empty and "username" in users_df2.columns:
                 deletable = [
                     u for u in users_df2["username"].astype(str).tolist()
-                    if u.lower() != username.lower()              # ← case-insensitive from teammate
+                    if u.lower() != username.lower()
                 ]
 
             if deletable:
                 del_user = st.selectbox("Select user to delete", deletable, key="del_user_sel")
                 if st.button("Delete User", type="primary", use_container_width=True):
-                    ok, msg = delete_pace_user(conn, del_user, current_username=username)  # ← safety param from teammate
+                    ok, msg = delete_pace_user(conn, del_user, current_username=username)
                     if ok:
                         st.success(msg)
-                        clear_db_cache()                          # ← added from teammate
+                        clear_db_cache()
                         st.rerun()
                     else:
                         st.error(f"Failed: {msg}")

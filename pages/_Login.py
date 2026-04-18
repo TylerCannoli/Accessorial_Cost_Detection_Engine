@@ -8,22 +8,10 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import check_auth, pace_role_is_admin
+from utils.styling import get_background_css
 
 
-def _bg_css() -> str:
-    """Return background CSS props for the ::before blur layer."""
-    img_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "background.png")
-    if os.path.exists(img_path):
-        with open(img_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        return (
-            f"background-image:url('data:image/png;base64,{b64}');"
-            "background-size:cover;background-position:center;"
-        )
-    return "background:linear-gradient(155deg,#060012 0%,#09021a 40%,#06010f 100%);"
-
-
-_bg_props = _bg_css()
+_bg_props = get_background_css()
 
 # ── Fallback users if DB unavailable ──────────────────────────────────────────
 _FALLBACK = {
