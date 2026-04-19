@@ -164,6 +164,52 @@ class FMCSAClient:
         except Exception:
             return []
 
+    def resolve_carrier_name(self, name: str) -> Optional[int]:
+        """Resolve a carrier name string to a USDOT number via company census.
+
+        Tries exact legal_name match first, then DBA name, then a LIKE search
+        on the uppercased name. Returns the DOT number of the best match, or
+        None if no confident match is found.
+        """
+        normalized = name.strip().upper()
+
+        def _query(params: dict) -> List[Dict[str, Any]]:
+            try:
+                r = requests.get(
+                    FMCSA_ENDPOINTS["company_census"],
+                    params={**params, "$limit": 5},
+                    timeout=10,
+                )
+                return r.json() if isinstance(r.json(), list) else []
+            except Exception:
+                return []
+
+        # 1. Exact legal_name match (case-insensitive via upper())
+        results = _query({"legal_name": normalized})
+        if not results:
+            # 2. Exact DBA name match
+            results = _query({"dba_name": normalized})
+        if not results:
+            # 3. LIKE search — matches carriers whose legal name contains the query
+            results = _query({"$where": f"upper(legal_name) like '%25{normalized}%25'"})
+
+        if not results:
+            return None
+
+        # Prefer the result whose legal_name most closely matches the input
+        def _score(rec: dict) -> int:
+            legal = (rec.get("legal_name") or "").upper()
+            dba   = (rec.get("dba_name")   or "").upper()
+            if legal == normalized or dba == normalized:
+                return 2
+            if normalized in legal or normalized in dba:
+                return 1
+            return 0
+
+        best = max(results, key=_score)
+        dot  = best.get("dot_number")
+        return int(dot) if dot else None
+
     def build_realtime_features(self, dot_number: int) -> Dict[str, Any]:
         """Build complete PACE-compatible feature dict from FMCSA data."""
         profile     = self.get_carrier_profile(dot_number)
