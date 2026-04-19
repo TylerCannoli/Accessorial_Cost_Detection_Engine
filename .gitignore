@@ -56,4 +56,5 @@ utils/model_config.json
 
 # Pycache in pipeline
 pipeline/__pycache__/
-ctgan data integration/ctgan_input_data_csv.xlsx
+ctgan data integration/ctgan_input_data_csv.xlsxenriched_fmcsa_training.csv
+enrichment_report.txt
