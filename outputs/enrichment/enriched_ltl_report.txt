@@ -1,0 +1,94 @@
+
+========================================================================
+STEP 1: LOAD LTL FILE
+========================================================================
+Loaded shape: (24526, 36)
+
+========================================================================
+STEP 2: CLEANUP (drop null col, filter $0 rows, cap pallets)
+========================================================================
+Dropped Unnamed: 24 (100% null)
+Filtered 16 zero-cost rows (data errors)
+Capped Total Pallets at 36 (1 rows winsorized)
+
+========================================================================
+STEP 3: TEMPORAL FEATURES
+========================================================================
+Added 8 temporal features: month, dow, week, quarter, is_month_end/start, days_to_nearest_holiday, is_holiday_week
+
+========================================================================
+STEP 4: NMFC IMPUTATION FROM COMMODITY CLASS MODE
+========================================================================
+NMFC nulls: 2205 -> 0 (imputed 2205 from commodity class mode)
+
+========================================================================
+STEP 5: CARRIER NAME -> DOT CROSSWALK
+========================================================================
+Distinct carriers: 39
+Streaming FMCSA_SMS_Motor_Carrier_Census.csv for name matches...
+  processed chunk 0, crosswalk rows so far: 9
+  processed chunk 5, crosswalk rows so far: 39
+  processed chunk 10, crosswalk rows so far: 79
+Crosswalk resolved 17/17 target carriers
+Top matches by fleet size:
+  SAIA                           -> DOT 29124 (SAIA MOTOR FREIGHT LINE LLC, 6896 PU)
+  R&L Carriers                   -> DOT 63391 (GREENWOOD MOTOR LINES INC, 10296 PU)
+  Estes Express Lines            -> DOT 121018 (ESTES EXPRESS LINES, 9805 PU)
+  XPO Logistics                  -> DOT 241829 (XPO LOGISTICS FREIGHT INC, 10260 PU)
+  Dayton Freight Lines           -> DOT 273301 (DAYTON FREIGHT LINES INC, 2278 PU)
+  Dohrn Transfer                 -> DOT 541227 (DOHRN TRANSFER COMPANY LLC, 958 PU)
+  Sutton Transport               -> DOT 2044451 (SUTTON TRANSPORT INC, 7 PU)
+  UPS TForce Freight             -> DOT 121058 (TFORCE FREIGHT INC, 4155 PU)
+  Old Dominion Freight Line      -> DOT 90849 (OLD DOMINION FREIGHT LINE INC, 10974 PU)
+  ABF Freight                    -> DOT 82866 (ABF FREIGHT SYSTEM INC, 4604 PU)
+
+========================================================================
+STEP 6: FMCSA BASIC SCORES JOIN
+========================================================================
+Joined FMCSA BASIC scores. Rows unchanged: 24510 -> 24510
+BASIC score null rates:
+  basic_unsafe_driving: 1.1% null
+  basic_hos: 1.1% null
+  basic_driver_fitness: 1.1% null
+  basic_contr_subst: 1.1% null
+  basic_vehicle_maint: 1.1% null
+
+========================================================================
+STEP 7: EIA REGIONAL DIESEL PRICE JOIN
+========================================================================
+Joined EIA diesel. Non-null rate: 99.8%
+Diesel price range: $3.10 - $5.56
+
+========================================================================
+STEP 8: NCEI DAILY WEATHER JOIN
+========================================================================
+Joined NCEI weather. Origin hit rate: 0.0%
+Severe weather flag fires on 0.0% of rows
+
+========================================================================
+STEP 9: LMI + FRED MONTHLY MARKET DEMAND
+========================================================================
+Joined LMI. Composite null rate: 17.2%
+Joined FRED TRUCKD11.csv: fred_truck_tonnage, null rate: 17.2%
+Joined FRED TSIFRGHT.csv: fred_freight_tsi, null rate: 23.0%
+Joined FRED PCU484121484121.csv: fred_ltl_ppi, null rate: 17.2%
+
+========================================================================
+STEP 10: LANE-LEVEL HISTORICAL ACCESSORIAL RATES (EB shrinkage)
+========================================================================
+Added 7 lane-level historical rate features (EB k=20)
+
+========================================================================
+STEP 11: POOL LOW-FREQUENCY ACCESSORIALS
+========================================================================
+any_low_freq_accessorial fires on 2.93% of rows
+Dropped 8 near-zero accessorial columns
+
+========================================================================
+STEP 12: WRITE OUTPUT
+========================================================================
+Wrote C:\Users\clayt\source\repos\PACE\outputs\enrichment\enriched_ltl_training.csv
+Final shape: (24510, 79)
+Rows retained: 24510 / 24526 (99.9%)
+Total columns: 79
+Elapsed: 138.3s

@@ -41,6 +41,10 @@ utils/pace_model.joblib
 # CTGAN outputs — too large for Git
 outputs/synthetic_data.csv
 outputs/*.csv
+outputs/**/*.csv
+
+# Runtime/download artifacts
+download.pid
 
 # Training logs
 *.log
