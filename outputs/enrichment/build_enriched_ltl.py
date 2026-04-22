@@ -429,6 +429,7 @@ def main() -> None:
         "C/HAZARDOUS MATERIALS": "hist_hazmat_rate",
         "C/Inside Delivery": "hist_inside_delivery_rate",
         "C/Residential Delivery": "hist_residential_rate",
+        "C/Detention": "hist_detention_rate",
     }
 
     k = 20  # shrinkage pseudo-count

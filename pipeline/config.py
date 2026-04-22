@@ -237,7 +237,7 @@ LTL_CONTINUOUS_COLUMNS = [
     # Lane-level historical accessorial rates
     "hist_lift_gate_rate", "hist_delivery_appt_rate", "hist_limited_access_rate",
     "hist_excessive_length_rate", "hist_hazmat_rate", "hist_inside_delivery_rate",
-    "hist_residential_rate",
+    "hist_residential_rate", "hist_detention_rate",
     # Origin geography
     "origin_county_estabs", "origin_trucking_warehouse_estabs",
     "origin_warehousing_estabs", "origin_reefer_share",
