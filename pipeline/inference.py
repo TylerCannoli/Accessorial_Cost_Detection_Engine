@@ -150,19 +150,27 @@ class PACEInference:
         self.cat_cols       = artifacts["cat_cols"]
         self.cont_cols      = artifacts["cont_cols"]
         self.risk_score_max = artifacts.get("risk_score_max", 1000.0)
+        self.cont_medians   = artifacts.get("cont_medians", None)
+        self.ltl_mode       = artifacts.get("ltl_mode", False)
 
         cardinalities = [self.cat_encoder.cardinalities[c] for c in self.cat_cols]
         embed_dims    = [self._compute_embed_dim(c) for c in cardinalities]
-        token_dim     = 192
-        token_dim     = ((token_dim + 8 - 1) // 8) * 8
+
+        # Architecture must match training-time config exactly.
+        # LTL mode uses a smaller model (2 layers, dim=64) to prevent overfitting on 24k rows.
+        if self.ltl_mode:
+            token_dim, n_layers, n_heads, attn_drop, ffn_drop = 64, 2, 4, 0.3, 0.4
+        else:
+            token_dim, n_layers, n_heads, attn_drop, ffn_drop = 192, 3, 8, 0.1, 0.2
+        token_dim = ((token_dim + 8 - 1) // 8) * 8
 
         self.model = PACETransformer(
             cat_cardinalities=cardinalities,
             cat_embed_dims=embed_dims,
             n_continuous=len(self.cont_cols),
             token_dim=token_dim,
-            n_layers=3, n_heads=8, ffn_multiplier=4/3,
-            attn_dropout=0.1, ffn_dropout=0.2,
+            n_layers=n_layers, n_heads=n_heads, ffn_multiplier=4/3,
+            attn_dropout=attn_drop, ffn_dropout=ffn_drop,
             n_classes=N_CLASSES,
         )
         self.model.load_state_dict(
@@ -198,7 +206,8 @@ class PACEInference:
                 df[col] = "UNKNOWN"
 
         cat_data  = self.cat_encoder.transform(df, self.cat_cols)
-        cont_data = df[self.cont_cols].fillna(0).values.astype(np.float32)
+        fill = self.cont_medians if self.cont_medians is not None else 0
+        cont_data = df[self.cont_cols].fillna(fill).values.astype(np.float32)
         cont_data = self.scaler.transform(cont_data)
 
         return (
