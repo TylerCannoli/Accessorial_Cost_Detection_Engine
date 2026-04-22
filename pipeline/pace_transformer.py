@@ -49,7 +49,7 @@ class HyperParameters:
     weight_decay: float = 1e-5
     batch_size: int = 2048
     epochs: int = 50
-    early_stopping_patience: int = 7
+    early_stopping_patience: int = 12
     embed_base_factor: float = 1.6
     embed_exponent: float = 0.56
     embed_max_dim: int = 64
@@ -461,17 +461,21 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=len(cont_cols))
     reg_crit = nn.MSELoss()
     if ltl_mode:
-        # MSE on 0-100 scores is ~200x larger than CrossEntropy; scale it down so
-        # classification is not starved of gradient.
-        reg_loss_scale = 0.005
+        # Regression MSE on 0-100 scale ≈ 2500, CrossEntropy ≈ 1-2; even 0.005 scale leaves
+        # regression at 91% of total loss, starving the classification head. Use 0.0 for
+        # pure classification in LTL mode — the regression head exists but gets no gradient.
+        reg_loss_scale = 0.0
         cls_counts = np.bincount(df_train[MULTICLASS_TARGET].values.astype(int), minlength=N_CLASSES)
-        raw_w = np.where(cls_counts > 0, 1.0 / np.maximum(cls_counts, 1), 0.0)
-        min_nz = raw_w[raw_w > 0].min()
-        raw_w  = np.clip(raw_w, 0.0, min_nz * 8)   # cap at 8x the most common class weight
+        n_total = int(cls_counts.sum())
         n_active = int((cls_counts > 0).sum())
-        raw_w  = raw_w / raw_w.sum() * n_active     # renormalize to sum = n_active classes
+        # Sqrt weighting: gentler than inverse-frequency; prevents single-class collapse
+        raw_w = np.where(cls_counts > 0,
+                         np.sqrt(n_total / (n_active * np.maximum(cls_counts, 1))), 0.0)
+        min_nz = raw_w[raw_w > 0].min()
+        raw_w  = np.clip(raw_w, 0.0, min_nz * 5)   # cap at 5x the most common class weight
+        raw_w  = raw_w / raw_w.sum() * n_active
         cls_weights = torch.tensor(raw_w, dtype=torch.float32)
-        print(f"  Class weights (LTL, capped 8x): { {i: f'{w:.3f}' for i, w in enumerate(cls_weights.tolist())} }")
+        print(f"  Class weights (LTL, sqrt/5x): { {i: f'{w:.3f}' for i, w in enumerate(cls_weights.tolist())} }")
         cls_crit = nn.CrossEntropyLoss(weight=cls_weights.to(device))
     else:
         reg_loss_scale = 1.0
