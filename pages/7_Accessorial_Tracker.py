@@ -11,6 +11,7 @@ from utils.database import get_connection_safe, get_shipments_with_charges
 from utils.mock_data import generate_mock_shipments
 from utils.styling import inject_css, sidebar_account, NAVY_500, TIER_COLORS, CHARGE_COLORS, RISK_HIGH_FG, risk_score_to_label, search_dataframe
 from pipeline.config import CHARGE_TYPE_LABELS, is_pace_model_ready
+from pages._pace_ui import get_pace_mode, show_mode_badge
 
 st.set_page_config(
     page_title="PACE — Accessorial Tracker",
@@ -23,9 +24,10 @@ inject_css()
 require_auth()
 username = st.session_state.get("username", "User")
 sidebar_account(username)
+show_mode_badge()
 
 # ── Model availability ────────────────────────────────────────────
-MODEL_READY = is_pace_model_ready()
+MODEL_READY = is_pace_model_ready(mode=get_pace_mode())
 
 # ── Load data ─────────────────────────────────────────────────────
 conn   = get_connection_safe()

@@ -79,8 +79,11 @@ class DataNormalizer:
 
     def _load_medians(self):
         """Load per-column medians from training artifacts if available."""
-        artifacts_path = ARTIFACTS_DIR / "artifacts.pkl"
-        if not artifacts_path.exists():
+        for candidate in ("artifacts_ltl.pkl", "artifacts_ftl.pkl", "artifacts.pkl"):
+            artifacts_path = ARTIFACTS_DIR / candidate
+            if artifacts_path.exists():
+                break
+        else:
             return
         try:
             import pickle

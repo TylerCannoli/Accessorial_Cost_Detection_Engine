@@ -24,7 +24,8 @@ BASE_URL    = f"https://github.com/{REPO}/releases/download/{RELEASE_TAG}"
 
 MODEL_FILES = {
     "models/pace_transformer_weights.pt": f"{BASE_URL}/pace_transformer_weights.pt",
-    "models/artifacts.pkl":               f"{BASE_URL}/artifacts.pkl",
+    "models/pace_transformer_ltl.pt":     f"{BASE_URL}/pace_transformer_ltl.pt",
+    "models/artifacts_ltl.pkl":           f"{BASE_URL}/artifacts_ltl.pkl",
 }
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

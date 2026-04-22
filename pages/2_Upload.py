@@ -19,6 +19,7 @@ from utils.column_mapper import (
     get_column_mapper, find_unrecognized_columns,
     CONFIDENCE_MEDIUM,
 )
+from pages._pace_ui import get_pace_mode, show_mode_badge
 
 # ── Page config ───────────────────────────────────────────────────
 st.set_page_config(
@@ -33,9 +34,11 @@ inject_css()
 require_auth()
 username = st.session_state.get("username", "User")
 sidebar_account(username)
+show_mode_badge()
 
 # ── Model availability check ──────────────────────────────────────
-MODEL_READY = is_pace_model_ready()
+_pace_mode = get_pace_mode()
+MODEL_READY = is_pace_model_ready(mode=_pace_mode)
 
 # ── Helper: tier color ────────────────────────────────────────────
 def tier_badge(label: str) -> str:
@@ -60,11 +63,20 @@ st.markdown("## Upload & Batch Score")
 st.caption("Upload a CSV or Excel file to validate, clean, and score with the PACE model.")
 
 if not MODEL_READY:
-    st.info(
-        "The PACE model is not yet trained. Uploads will be validated and "
-        "processed — scoring will be available once training is complete.",
-        icon="ℹ️"
-    )
+    _mode_label = "FTL" if _pace_mode == "ftl" else "LTL"
+    if _pace_mode == "ftl":
+        st.warning(
+            f"The **{_mode_label} model weights** have not been uploaded yet. "
+            "Upload `models/pace_transformer_ftl.pt` and `models/artifacts_ftl.pkl` "
+            "from the GPU cluster to enable FTL scoring.",
+            icon="⚠️",
+        )
+    else:
+        st.info(
+            "The PACE model is not yet trained. Uploads will be validated and "
+            "processed — scoring will be available once training is complete.",
+            icon="ℹ️",
+        )
 
 # ── File requirements expander ────────────────────────────────────
 with st.expander("📋 Accepted Formats & Columns", expanded=False):
@@ -380,7 +392,7 @@ if st.session_state.get("upload_raw_df") is not None:
             try:
                 from pipeline.inference import get_inference_engine
                 from pipeline.ingest.normalizer import DataNormalizer
-                engine = get_inference_engine()
+                engine = get_inference_engine(mode=_pace_mode)
 
                 with st.spinner(f"Scoring {pass_count:,} rows with PACE model..."):
                     df_filled  = DataNormalizer().fill(df_clean)

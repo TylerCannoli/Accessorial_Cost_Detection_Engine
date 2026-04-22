@@ -3,7 +3,8 @@ import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auth_utils import require_auth, pace_role_is_admin          # ← your addition kept
+from auth_utils import require_auth, pace_role_is_admin
+from pages._pace_ui import show_mode_badge
 from utils.database import (
     clear_db_cache,
     create_pace_user,
@@ -38,6 +39,7 @@ if not pace_role_is_admin():                                     # ← your auth
     st.stop()
 
 sidebar_account(username)
+show_mode_badge()
 
 conn = get_connection_safe()
 # ── DB status / retry ─────────────────────────────────────────────────────────

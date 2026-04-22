@@ -15,6 +15,7 @@ from pipeline.config import (
     CONTINUOUS_COLUMNS, CATEGORICAL_COLUMNS, N_CLASSES,
     MODEL_WEIGHTS_PATH, MODEL_ARTIFACTS_PATH, CHARGE_TYPE_LABELS, DOT_COLUMN,
     TD_HOST, TD_USERNAME, TD_PASSWORD, TD_DATABASE,
+    model_paths,
 )
 from pipeline.data_pipeline import BOOL_COLS
 
@@ -115,8 +116,9 @@ class PACEInference:
     being passed to the model.
     """
 
-    def __init__(self, weights_path: str = MODEL_WEIGHTS_PATH,
-                 artifacts_path: str = MODEL_ARTIFACTS_PATH):
+    def __init__(self, mode: str = "ltl",
+                 weights_path: str = None,
+                 artifacts_path: str = None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model       = None
         self.cat_encoder = None
@@ -124,6 +126,8 @@ class PACEInference:
         self.cat_cols    = None
         self.cont_cols   = None
         self.risk_score_max = 1000.0
+        if weights_path is None or artifacts_path is None:
+            weights_path, artifacts_path = model_paths(mode)
         self._load(weights_path, artifacts_path)
 
     # ── Model loading ─────────────────────────────────────────────
@@ -538,14 +542,13 @@ class PACEInference:
 # Singleton loader
 # ══════════════════════════════════════════════════════════════════
 
-_engine: Optional[PACEInference] = None
+_engines: dict = {}
 
-def get_inference_engine() -> PACEInference:
+def get_inference_engine(mode: str = "ltl") -> PACEInference:
     """
-    Returns a singleton PACEInference instance.
-    Call this from Streamlit pages — model loads once and is reused.
+    Returns a per-mode singleton PACEInference instance.
+    Call this from Streamlit pages — each mode's model loads once and is reused.
     """
-    global _engine
-    if _engine is None:
-        _engine = PACEInference()
-    return _engine
+    if mode not in _engines:
+        _engines[mode] = PACEInference(mode=mode)
+    return _engines[mode]

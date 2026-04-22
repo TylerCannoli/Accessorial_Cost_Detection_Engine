@@ -271,14 +271,29 @@ LTL_CATEGORICAL_COLUMNS = [
 ]
 
 # FT-Transformer settings
-MODEL_WEIGHTS_PATH = "models/pace_transformer.pt"
-MODEL_ARTIFACTS_PATH = "models/artifacts.pkl"
+MODEL_WEIGHTS_PATH_LTL   = "models/pace_transformer_ltl.pt"
+MODEL_ARTIFACTS_PATH_LTL = "models/artifacts_ltl.pkl"
+MODEL_WEIGHTS_PATH_FTL   = "models/pace_transformer_ftl.pt"
+MODEL_ARTIFACTS_PATH_FTL = "models/artifacts_ftl.pkl"
+
+# Backward-compat aliases (point to LTL paths)
+MODEL_WEIGHTS_PATH   = MODEL_WEIGHTS_PATH_LTL
+MODEL_ARTIFACTS_PATH = MODEL_ARTIFACTS_PATH_LTL
+
 RESULTS_DIR = "outputs"
 
 
-def is_pace_model_ready() -> bool:
+def model_paths(mode: str = "ltl") -> tuple:
+    """Return (weights_path, artifacts_path) for the given mode."""
+    if mode == "ftl":
+        return MODEL_WEIGHTS_PATH_FTL, MODEL_ARTIFACTS_PATH_FTL
+    return MODEL_WEIGHTS_PATH_LTL, MODEL_ARTIFACTS_PATH_LTL
+
+
+def is_pace_model_ready(mode: str = "ltl") -> bool:
     """Return True only when both PACE model artifact files exist on disk."""
-    return os.path.exists(MODEL_WEIGHTS_PATH) and os.path.exists(MODEL_ARTIFACTS_PATH)
+    weights, artifacts = model_paths(mode)
+    return os.path.exists(weights) and os.path.exists(artifacts)
 CHUNK_SIZE = 100000
 NUM_THREADS = 4
 

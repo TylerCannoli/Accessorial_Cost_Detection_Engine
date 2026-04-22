@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth_utils import require_auth
 from utils.database import load_shipments_with_fallback
 from utils.styling import inject_css, sidebar_account
+from pages._pace_ui import show_mode_badge
 
 st.set_page_config(
     page_title="PACE — Route Analysis",
@@ -21,6 +22,7 @@ inject_css()
 require_auth()
 username = st.session_state.get("username", "User")
 sidebar_account(username)
+show_mode_badge()
 
 df_raw = load_shipments_with_fallback()
 df_raw["ship_date_dt"] = pd.to_datetime(df_raw["ship_date"])

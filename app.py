@@ -330,15 +330,12 @@ st.markdown(f"""
     padding: 0 clamp(1rem, 7vw, 56px);
     margin-top: 36px;
     position: relative; z-index: 5;
-    display: flex; align-items: center;
 }}
-/* Override Streamlit column gutters inside the CTA row */
-.pace-cta-row [data-testid="stColumns"] {{
-    gap: 0 !important;
-    margin: 0 !important;
-}}
-.pace-cta-row [data-testid="column"]:nth-child(2) > div > div > div {{
-    padding: 0 !important;
+.pace-cta-mode-label {{
+    font-family: 'Outfit', Arial, sans-serif;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.18em;
+    text-transform: uppercase; color: rgba(200,180,240,0.6);
+    text-align: center; margin-top: 8px;
 }}
 
 /* — Footer — */
@@ -517,12 +514,19 @@ st.markdown("""
 </section>
 """, unsafe_allow_html=True)
 
-# ── GET STARTED button — rendered here so it sits below the hero ──────────────
+# ── Mode-select CTA buttons — rendered below the hero ──────────────────────────
 st.markdown('<div class="pace-cta-row">', unsafe_allow_html=True)
-_, btn_col, _ = st.columns([1, 2, 1])
-with btn_col:
-    if st.button("GET STARTED →", type="primary", use_container_width=True, key="signin"):
+_, ltl_col, ftl_col, _ = st.columns([0.5, 1, 1, 0.5], gap="large")
+with ltl_col:
+    if st.button("LTL FREIGHT  →", type="primary", use_container_width=True, key="cta_ltl"):
+        st.session_state["pace_mode"] = "ltl"
         st.switch_page("pages/_Login.py")
+    st.markdown('<div class="pace-cta-mode-label">Less-Than-Truckload</div>', unsafe_allow_html=True)
+with ftl_col:
+    if st.button("FTL FREIGHT  →", type="primary", use_container_width=True, key="cta_ftl"):
+        st.session_state["pace_mode"] = "ftl"
+        st.switch_page("pages/_Login.py")
+    st.markdown('<div class="pace-cta-mode-label">Full Truckload</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("""

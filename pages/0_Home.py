@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from auth_utils import require_auth
 from utils.database import load_shipments_with_fallback
 from utils.styling import inject_css, sidebar_account, inject_metric_wrap_css
+from pages._pace_ui import show_mode_badge
 
 st.set_page_config(page_title="PACE — Home", page_icon="🏠",
                    layout="wide", initial_sidebar_state="expanded")
@@ -17,6 +18,7 @@ require_auth()
 username = st.session_state.get("username", "User")
 display_name = str(username).split("@")[0].replace(".", " ").replace("_", " ").title()
 sidebar_account(username)
+show_mode_badge()
 
 if st.session_state.get("upload_scored") is not None:
     df_all = st.session_state["upload_scored"].copy()

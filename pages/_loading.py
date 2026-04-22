@@ -29,6 +29,9 @@ if not check_auth():
     st.switch_page("pages/_Login.py")
     st.stop()
 
+# Preserve pace_mode across any session state resets that may follow
+_pace_mode = st.session_state.get("pace_mode", "ltl")
+
 dest = st.session_state.get("post_load_dest", "pages/0_Home.py")
 
 # If already loaded this session, skip straight to destination
@@ -169,6 +172,7 @@ try:
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.session_state["_login_error"] = _err
+            st.session_state["pace_mode"] = _pace_mode  # restore mode after clear
             st.switch_page("pages/_Login.py")
             st.stop()
         norm_role = str(verified_role).strip().lower()
@@ -215,11 +219,11 @@ try:
     _step("Loading PACE model", 95)
     try:
         from pipeline.inference import get_inference_engine
-        if not is_pace_model_ready():
+        if not is_pace_model_ready(mode=_pace_mode):
             from scripts.download_weights import ensure_weights_ready
             ensure_weights_ready()
-        if is_pace_model_ready():
-            get_inference_engine()
+        if is_pace_model_ready(mode=_pace_mode):
+            get_inference_engine(mode=_pace_mode)
     except Exception as e:
         import logging
         logging.warning("PACE: model pre-warm failed (model may not be trained yet): %s", e)

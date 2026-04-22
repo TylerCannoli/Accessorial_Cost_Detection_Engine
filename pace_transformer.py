@@ -43,8 +43,8 @@ TD_VIEW     = os.environ["TD_VIEW"]
 
 MODEL_DIR      = Path("models")
 MODEL_DIR.mkdir(exist_ok=True)
-WEIGHTS_PATH   = MODEL_DIR / "pace_transformer.pt"
-ARTIFACTS_PATH = MODEL_DIR / "artifacts.pkl"
+WEIGHTS_PATH   = MODEL_DIR / "pace_transformer_ftl.pt"
+ARTIFACTS_PATH = MODEL_DIR / "artifacts_ftl.pkl"
 METRICS_PATH   = MODEL_DIR / "training_metrics.json"
 
 # ── Column Definitions ────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ from utils.styling import (
     CHARGE_COLORS,
 )
 from pipeline.config import is_pace_model_ready
+from pages._pace_ui import show_mode_badge
 
 st.set_page_config(
     page_title="PACE — Carrier Benchmarking",
@@ -26,6 +27,7 @@ inject_css()
 require_auth()
 username = st.session_state.get("username", "User")
 sidebar_account(username)
+show_mode_badge()
 
 df_raw = load_shipments_with_fallback()
 df_raw["ship_date_dt"] = pd.to_datetime(df_raw["ship_date"])

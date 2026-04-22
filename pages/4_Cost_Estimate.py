@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auth_utils import require_auth
 from utils.styling import inject_css, sidebar_account, inject_metric_wrap_css
+from pages._pace_ui import show_mode_badge
 
 from utils.database import load_shipments_with_fallback
 
@@ -27,6 +28,7 @@ require_auth()
 
 username = st.session_state.get("username", "User")
 sidebar_account(username)
+show_mode_badge()
 
 
 # -------------------------------------------------------------------

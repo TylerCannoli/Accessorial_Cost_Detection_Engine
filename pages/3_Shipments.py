@@ -15,6 +15,7 @@ from utils.styling import (
     risk_score_to_label, search_dataframe,
 )
 from pipeline.config import CHARGE_TYPE_LABELS, is_pace_model_ready
+from pages._pace_ui import get_pace_mode, show_mode_badge
 
 st.set_page_config(
     page_title="PACE — Shipments",
@@ -27,9 +28,10 @@ inject_css()
 require_auth()
 username = st.session_state.get("username", "User")
 sidebar_account(username)
+show_mode_badge()
 
 # ── Model availability ────────────────────────────────────────────
-MODEL_READY = is_pace_model_ready()
+MODEL_READY = is_pace_model_ready(mode=get_pace_mode())
 
 # ── Load data ─────────────────────────────────────────────────────
 df_all = load_shipments_with_fallback()
