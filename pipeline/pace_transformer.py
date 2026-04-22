@@ -447,10 +447,13 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
 
     print("\n[4/6] Building datasets...")
     scaler = StandardScaler()
+    # Compute training-set medians for imputation; fillna(0) is wrong for columns like
+    # LMI (~58), FRED indices (~113-180), and terminal distance (~80 mi).
+    cont_medians = df_train[cont_cols].median()
 
     def make_dataset(frame, fit_scaler=False):
         cat_data  = cat_encoder.transform(frame, cat_cols)
-        cont_data = frame[cont_cols].fillna(0).values.astype(np.float32)
+        cont_data = frame[cont_cols].fillna(cont_medians).values.astype(np.float32)
         if fit_scaler:
             cont_data = scaler.fit_transform(cont_data)
         else:
@@ -525,6 +528,7 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
         "scaler":         scaler,
         "cat_cols":       cat_cols,
         "cont_cols":      cont_cols,
+        "cont_medians":   cont_medians,
         "risk_score_max": float(max_score),
         "ltl_mode":       ltl_mode,
     }

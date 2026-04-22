@@ -228,8 +228,9 @@ LTL_CONTINUOUS_COLUMNS = [
     "carrier_fleet_size", "carrier_driver_count", "carrier_hm_authorized",
     "insp_total", "driver_oos_insp_total", "vehicle_oos_insp_total",
     "basic_unsafe_driving", "basic_hos", "basic_driver_fitness",
-    "basic_contr_subst", "basic_vehicle_maint",
-    # Market / macro signals
+    # basic_contr_subst excluded: 100% zero (FMCSA measure not populated for these carriers)
+    "basic_vehicle_maint",
+    # Market / macro signals (17-23% null; median-imputed in pipeline, not zero-filled)
     "diesel_price_padd",
     "lmi_composite", "transportation_capacity", "transportation_utilization",
     "transportation_prices", "fred_truck_tonnage", "fred_freight_tsi", "fred_ltl_ppi",
@@ -251,18 +252,21 @@ LTL_CONTINUOUS_COLUMNS = [
     "origin_wx_tmax_f", "origin_wx_tmin_f",
     "dest_wx_wind_mph", "dest_wx_prcp_in", "dest_wx_snow_in",
     "dest_wx_tmax_f", "dest_wx_tmin_f",
-    # Terminal proximity
+    # Terminal proximity (49% null for carriers without full directory; median-imputed)
     "dist_to_nearest_carrier_terminal_mi",
     "carrier_has_terminal_in_origin_zip", "carrier_has_terminal_in_dest_zip",
     # Binary flags (treated as numeric)
     "severe_weather_flag", "is_month_end", "is_month_start", "is_holiday_week",
     "nmfc_imputed", "any_low_freq_accessorial", "likely_residential_dest",
-    "frs_residential_dest", "osrm_imputed",
+    "frs_residential_dest",
+    # osrm_imputed excluded: always 0 (all routes resolved by OSRM, no haversine fallback)
 ]
 
 LTL_CATEGORICAL_COLUMNS = [
     "Shipper State", "Consignee State", "Carrier Name",
-    "Top Commodity Class", "Shipment Mode", "origin_padd",
+    "Top Commodity Class",
+    # Shipment Mode excluded: 100% LTL, zero variance
+    "origin_padd",
     "origin_urban_class", "dest_urban_class",
 ]
 
