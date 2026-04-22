@@ -482,8 +482,13 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=len(cont_cols))
     reg_crit = nn.MSELoss()
     if ltl_mode:
-        reg_loss_scale = 0.0   # pure classification; regression head gets no gradient
-        cls_crit = nn.CrossEntropyLoss()  # unweighted: let model learn natural distribution
+        reg_loss_scale = 0.0
+        # Sqrt-inverse-frequency weights capped at 6x to boost rare classes without collapse.
+        # Detention (0.8%) and Compliance Fee (0.66%) need the most help; majority classes ~1x.
+        ltl_class_weights = torch.tensor(
+            [1.0, 4.6, 1.4, 5.0, 2.6, 1.2], dtype=torch.float32
+        ).to(device)
+        cls_crit = nn.CrossEntropyLoss(weight=ltl_class_weights)
     else:
         reg_loss_scale = 1.0
         cls_crit = nn.CrossEntropyLoss()
