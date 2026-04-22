@@ -211,6 +211,60 @@ CONTINUOUS_COLUMNS_V2 = (
     PHASE2_NEW_COLUMNS
 )
 
+# ── LTL shipment feature columns (enriched_ltl_training.csv) ──────────────────
+# Used when pace_transformer.py is invoked with --csv on the LTL enriched file.
+# Column names match outputs/enrichment/build_enriched_ltl.py output exactly.
+
+LTL_DATE_COLUMN = "pickup_year"  # derived from pickup_dt at load time
+
+LTL_CONTINUOUS_COLUMNS = [
+    # Shipment basics
+    "Total Weight", "Total Pallets", "osrm_miles", "osrm_minutes",
+    # Temporal
+    "pickup_month", "pickup_dow", "pickup_week", "pickup_quarter",
+    "days_to_nearest_holiday",
+    # Carrier safety profile (from FMCSA SMS crosswalk)
+    "carrier_fleet_size", "carrier_driver_count", "carrier_hm_authorized",
+    "insp_total", "driver_oos_insp_total", "vehicle_oos_insp_total",
+    "basic_unsafe_driving", "basic_hos", "basic_driver_fitness",
+    "basic_contr_subst", "basic_vehicle_maint",
+    # Market / macro signals
+    "diesel_price_padd",
+    "lmi_composite", "transportation_capacity", "transportation_utilization",
+    "transportation_prices", "fred_truck_tonnage", "fred_freight_tsi", "fred_ltl_ppi",
+    # Lane-level historical accessorial rates
+    "hist_lift_gate_rate", "hist_delivery_appt_rate", "hist_limited_access_rate",
+    "hist_excessive_length_rate", "hist_hazmat_rate", "hist_inside_delivery_rate",
+    "hist_residential_rate",
+    # Origin geography
+    "origin_county_estabs", "origin_trucking_warehouse_estabs",
+    "origin_warehousing_estabs", "origin_reefer_share",
+    # Destination geography
+    "dest_county_estabs", "dest_trucking_warehouse_estabs",
+    "dest_warehousing_estabs", "dest_reefer_share",
+    # Facility / residential flags (numeric)
+    "origin_frs_facilities", "origin_frs_stationary",
+    "dest_frs_facilities", "dest_frs_stationary",
+    # Weather at origin and destination
+    "origin_wx_wind_mph", "origin_wx_prcp_in", "origin_wx_snow_in",
+    "origin_wx_tmax_f", "origin_wx_tmin_f",
+    "dest_wx_wind_mph", "dest_wx_prcp_in", "dest_wx_snow_in",
+    "dest_wx_tmax_f", "dest_wx_tmin_f",
+    # Terminal proximity
+    "dist_to_nearest_carrier_terminal_mi",
+    "carrier_has_terminal_in_origin_zip", "carrier_has_terminal_in_dest_zip",
+    # Binary flags (treated as numeric)
+    "severe_weather_flag", "is_month_end", "is_month_start", "is_holiday_week",
+    "nmfc_imputed", "any_low_freq_accessorial", "likely_residential_dest",
+    "frs_residential_dest", "osrm_imputed",
+]
+
+LTL_CATEGORICAL_COLUMNS = [
+    "Shipper State", "Consignee State", "Carrier Name",
+    "Top Commodity Class", "Shipment Mode", "origin_padd",
+    "origin_urban_class", "dest_urban_class",
+]
+
 # FT-Transformer settings
 MODEL_WEIGHTS_PATH = "models/pace_transformer.pt"
 MODEL_ARTIFACTS_PATH = "models/artifacts.pkl"

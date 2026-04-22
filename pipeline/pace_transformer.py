@@ -32,6 +32,7 @@ from pipeline.config import (
     TD_HOST, TD_USERNAME, TD_PASSWORD, TD_DATABASE, TD_VIEW,
     ID_COLUMN, DATE_COLUMN, REGRESSION_TARGET, MULTICLASS_TARGET,
     N_CLASSES, CONTINUOUS_COLUMNS_V2 as CONTINUOUS_COLUMNS, CATEGORICAL_COLUMNS,
+    LTL_DATE_COLUMN, LTL_CONTINUOUS_COLUMNS, LTL_CATEGORICAL_COLUMNS,
     MODEL_WEIGHTS_PATH, MODEL_ARTIFACTS_PATH, RESULTS_DIR, CHUNK_SIZE, NUM_THREADS,
     CHARGE_TYPE_LABELS,
 )
@@ -162,6 +163,10 @@ def _compute_ltl_targets(df: pd.DataFrame) -> pd.DataFrame:
 
     dist = df["accessorial_type"].value_counts().sort_index()
     print(f"  LTL targets derived — type dist: { {k: int(v) for k, v in dist.items()} }")
+
+    if "pickup_dt" in df.columns and LTL_DATE_COLUMN not in df.columns:
+        df[LTL_DATE_COLUMN] = pd.to_datetime(df["pickup_dt"], errors="coerce").dt.year.fillna(0).astype(int)
+
     return df
 
 
@@ -396,14 +401,26 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
         print(f"  Source: Teradata ({TD_DATABASE}.{TD_VIEW})")
         df = load_data()
 
+    # Detect LTL mode (enriched_ltl_training.csv has C/ columns, no insp_year)
+    ltl_mode = DATE_COLUMN not in df.columns
+    if ltl_mode:
+        print("  LTL mode: using LTL column lists and pickup_year for split")
+        active_date_col  = LTL_DATE_COLUMN
+        active_cat_list  = LTL_CATEGORICAL_COLUMNS
+        active_cont_list = LTL_CONTINUOUS_COLUMNS
+    else:
+        active_date_col  = DATE_COLUMN
+        active_cat_list  = CATEGORICAL_COLUMNS
+        active_cont_list = CONTINUOUS_COLUMNS
+
     print("\n[2/6] Normalizing regression target...")
     max_score = df[REGRESSION_TARGET].max()
     df[REGRESSION_TARGET] = (df[REGRESSION_TARGET] / max_score * 100).astype(np.float32)
 
     print("\n[3/6] Train/test split...")
-    max_year = df[DATE_COLUMN].max()
-    df_train = df[df[DATE_COLUMN] < max_year].reset_index(drop=True)
-    df_test  = df[df[DATE_COLUMN] == max_year].reset_index(drop=True)
+    max_year = df[active_date_col].max()
+    df_train = df[df[active_date_col] < max_year].reset_index(drop=True)
+    df_test  = df[df[active_date_col] == max_year].reset_index(drop=True)
     if len(df_train) < 1000:
         # All rows are from the same year — fall back to random 80/20 split
         print(f"  Time-based split produced empty train set — using random 80/20 split")
@@ -413,8 +430,8 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
         df_test  = df.iloc[split:].reset_index(drop=True)
     print(f"  Train: {len(df_train):,} | Test: {len(df_test):,}")
 
-    cat_cols = [c for c in CATEGORICAL_COLUMNS if c in df.columns]
-    cont_cols = [c for c in CONTINUOUS_COLUMNS if c in df.columns]
+    cat_cols = [c for c in active_cat_list if c in df.columns]
+    cont_cols = [c for c in active_cont_list if c in df.columns]
     cat_encoder = CategoricalEncoder().fit(df_train, cat_cols)
 
     print("\n[4/6] Building datasets...")
