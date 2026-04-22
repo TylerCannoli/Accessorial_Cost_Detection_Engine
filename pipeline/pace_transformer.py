@@ -141,24 +141,32 @@ def _compute_ltl_targets(df: pd.DataFrame) -> pd.DataFrame:
             score += pd.to_numeric(df[col], errors="coerce").fillna(0) * w
     df["accessorial_risk_score"] = np.minimum(100.0, score)
 
-    hazmat   = pd.to_numeric(df.get("C/HAZARDOUS MATERIALS",   0), errors="coerce").fillna(0)
-    detention= pd.to_numeric(df.get("C/Detention",             0), errors="coerce").fillna(0)
-    vehicle  = (
+    hazmat    = pd.to_numeric(df.get("C/HAZARDOUS MATERIALS",   0), errors="coerce").fillna(0)
+    detention = pd.to_numeric(df.get("C/Detention",             0), errors="coerce").fillna(0)
+    vehicle   = (
         pd.to_numeric(df.get("C/Lift Gate Delivery",       0), errors="coerce").fillna(0) +
         pd.to_numeric(df.get("C/Limited Access Delivery",  0), errors="coerce").fillna(0) +
         pd.to_numeric(df.get("C/Excessive Length Charge",  0), errors="coerce").fillna(0)
+    ).clip(upper=1)
+    compliance = (
+        pd.to_numeric(df.get("C/Re Weigh Fee",    0), errors="coerce").fillna(0) +
+        pd.to_numeric(df.get("C/Inspection",      0), errors="coerce").fillna(0) +
+        pd.to_numeric(df.get("C/Single Shipment", 0), errors="coerce").fillna(0)
     ).clip(upper=1)
     n_charges = sum(
         pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0).clip(upper=1)
         for c in charge_weights
     )
+    # Priority order matters: detention always wins so it isn't buried by multi-charge rule.
+    # n_charges >= 2 catches non-detention multi-charge shipments as High Risk / Multiple.
     conditions = [
-        n_charges >= 2,
-        hazmat > 0,
-        detention > 0,
-        vehicle > 0,
+        detention > 0,   # class 1 — Detention (critical; wins even when combined with others)
+        n_charges >= 2,  # class 5 — High Risk / Multiple (non-detention multi-charge)
+        hazmat > 0,      # class 4 — Hazmat Fee
+        vehicle > 0,     # class 2 — Safety Surcharge
+        compliance > 0,  # class 3 — Compliance Fee (re-weigh, inspection, single shipment)
     ]
-    choices = [5, 4, 1, 2]
+    choices = [1, 5, 4, 2, 3]
     df["accessorial_type"] = np.select(conditions, choices, default=0).astype(int)
 
     dist = df["accessorial_type"].value_counts().sort_index()
