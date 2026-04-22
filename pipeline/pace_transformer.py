@@ -523,7 +523,8 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     print(classification_report(ct, cp, labels=present_labels, target_names=present_names, digits=4))
 
     # Save predictions
-    preds_df = df_test[[ID_COLUMN, DATE_COLUMN]].copy()
+    id_cols = [c for c in [ID_COLUMN, active_date_col] if c in df_test.columns]
+    preds_df = df_test[id_cols].copy() if id_cols else pd.DataFrame(index=df_test.index)
     preds_df["risk_score_true"]  = rt
     preds_df["risk_score_pred"]  = rp
     preds_df["charge_type_true"] = ct
