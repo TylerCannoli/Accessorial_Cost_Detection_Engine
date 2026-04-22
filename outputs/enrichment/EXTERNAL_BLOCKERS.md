@@ -2,24 +2,32 @@
 
 Features that depend on data outside PACE DATA or the LTL CSV. Status as of 2026-04-19.
 
-## 1. Carrier terminal service ZIPs — BLOCKED
+## 1. Carrier terminal service ZIPs — RESOLVED (all 6 covered)
 
 **Goal:** Per-carrier set of ZIPs where they have a service center, for features
 `carrier_has_terminal_in_origin_zip`, `carrier_has_terminal_in_dest_zip`,
 `dist_to_nearest_carrier_terminal`.
 
-**Why blocked:** All major LTL carrier locators (SAIA, Estes, R&L, XPO, ODFL,
-FedEx Freight, TForce) are Next.js / React SPAs that render terminal lists from
-XHR calls authenticated with anti-bot tokens. HTTP `GET` on their public URLs
-returns an empty HTML shell. `scrape_carrier_terminals.py` is scaffolded but the
-parsers need one of these follow-ups:
+**Status:** `scrape_carrier_terminals.py` is production, 719 terminals total in
+`carrier_terminal_zips.csv`:
 
-- **Option A (fast):** Manually open each locator in a browser, copy the XHR JSON
-  response into `terminals_raw/<carrier>.json`, then post-process.
-- **Option B (robust):** Add Playwright and do `page.goto()` → wait for network idle
-  → read window object / intercept fetch. Cost: headless Chromium in the pipeline.
-- **Option C (pragmatic):** Use the FMCSA carrier census "terminals" field for
-  registered authority terminals — HQ-biased but covers most carriers.
+| Carrier      | Count | Source |
+|--------------|-------|--------|
+| SAIA         | 215   | Playwright lifts Contentful auth token, paginates Delivery API (`content_type=terminal`). Precise street+ZIP. |
+| ESTES        | 224   | Public sitemap `/api/vtl/sitemap/sitemap.xml` → 226 terminal pages, regex-extract `<strong>Terminal:</strong>` + `<strong>Address:</strong>` blocks. |
+| ODFL         | 272   | Sitemap gives 285 (state, code). OSM Overpass (`operator='Old Dominion'`) matches 22 via nearest-ZIP on lat/lon. Remaining 263 resolved by Google Places API (New) text-search: 250 / 263 precise ZIPs. |
+| XPO          | 5     | FMCSA Company Census lookup by DOT number (via `carrier_dot_crosswalk.csv`) — HQ / regional office addresses. |
+| FedEx Freight| 2     | FMCSA census (FedEx Economy + FedEx Priority DOTs). |
+| R&L          | 1     | FMCSA census (HQ only). |
+
+Google Places key lives in `.env` as `GOOGLE_PLACES_API_KEY` and is autoloaded
+by `python-dotenv`. Restricted to Places API (New) with a billing cap; 263
+lookups cost ~$1.30 against the $200/mo free credit.
+
+Limitation: XPO / FedEx / R&L coverage is HQ-biased (1-5 ZIPs per carrier
+rather than a full network). Features using these will be weaker for
+those 3 carriers than for SAIA / Estes / ODFL. No public terminal directory
+exists for them — this is the ceiling without pentesting their locator auth.
 
 ## 2. Appointment-required flag — EXTERNAL TMS
 

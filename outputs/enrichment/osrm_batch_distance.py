@@ -23,16 +23,21 @@ from urllib3.util.retry import Retry
 OUT_DIR = Path(__file__).resolve().parent
 PAIRS_CSV = OUT_DIR / "od_zip_pairs.csv"
 OSRM_OUT = OUT_DIR / "od_zip_pairs_osrm.csv"
-OSRM_URL = os.environ.get("OSRM_URL", "http://localhost:5000")
+OSRM_URL = os.environ.get("OSRM_URL", "https://router.project-osrm.org")
+REQ_DELAY = float(os.environ.get("OSRM_REQ_DELAY", "1.1"))
 
 METERS_PER_MILE = 1609.344
 
 
 def build_session() -> requests.Session:
     s = requests.Session()
-    retries = Retry(total=3, backoff_factor=0.5,
-                    status_forcelist=[502, 503, 504], allowed_methods=["GET"])
-    s.mount("http://", HTTPAdapter(max_retries=retries, pool_maxsize=16))
+    retries = Retry(total=5, backoff_factor=1.5,
+                    status_forcelist=[429, 502, 503, 504], allowed_methods=["GET"],
+                    respect_retry_after_header=True)
+    adapter = HTTPAdapter(max_retries=retries, pool_maxsize=16)
+    s.mount("http://", adapter)
+    s.mount("https://", adapter)
+    s.headers.update({"User-Agent": "PACE-research/1.0 (claytonrjosef@gmail.com)"})
     return s
 
 
@@ -91,6 +96,8 @@ def main() -> None:
                                    row["dest_lat"], row["dest_lon"])
         merged.at[i, "osrm_miles"] = miles
         merged.at[i, "osrm_minutes"] = minutes
+        if REQ_DELAY > 0:
+            time.sleep(REQ_DELAY)
         if n % checkpoint_every == 0 or n == len(todo_idx):
             rate = n / max(time.time() - t0, 1e-6)
             eta = (len(todo_idx) - n) / max(rate, 1e-6)
