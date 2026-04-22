@@ -113,6 +113,58 @@ def load_data() -> pd.DataFrame:
     return df
 
 
+def _compute_ltl_targets(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive accessorial_risk_score and accessorial_type from C/ charge columns.
+
+    Used when loading enriched_ltl_training.csv, which has binary C/ flags
+    instead of FMCSA OOS counts.
+    """
+    charge_weights = {
+        "C/HAZARDOUS MATERIALS":    30.0,
+        "C/Detention":              25.0,
+        "C/Limited Access Delivery":20.0,
+        "C/Inside Delivery":        15.0,
+        "C/Lift Gate Delivery":     15.0,
+        "C/Excessive Length Charge":15.0,
+        "C/Lumper Fee":             15.0,
+        "C/Delivery Appointment":   10.0,
+        "C/Residential Delivery":   10.0,
+        "C/Single Shipment":        10.0,
+        "C/SORT/SEGREGATING FEE":   10.0,
+        "C/Re Weigh Fee":            5.0,
+        "C/Inspection":              5.0,
+    }
+    score = pd.Series(0.0, index=df.index)
+    for col, w in charge_weights.items():
+        if col in df.columns:
+            score += pd.to_numeric(df[col], errors="coerce").fillna(0) * w
+    df["accessorial_risk_score"] = np.minimum(100.0, score)
+
+    hazmat   = pd.to_numeric(df.get("C/HAZARDOUS MATERIALS",   0), errors="coerce").fillna(0)
+    detention= pd.to_numeric(df.get("C/Detention",             0), errors="coerce").fillna(0)
+    vehicle  = (
+        pd.to_numeric(df.get("C/Lift Gate Delivery",       0), errors="coerce").fillna(0) +
+        pd.to_numeric(df.get("C/Limited Access Delivery",  0), errors="coerce").fillna(0) +
+        pd.to_numeric(df.get("C/Excessive Length Charge",  0), errors="coerce").fillna(0)
+    ).clip(upper=1)
+    n_charges = sum(
+        pd.to_numeric(df.get(c, 0), errors="coerce").fillna(0).clip(upper=1)
+        for c in charge_weights
+    )
+    conditions = [
+        n_charges >= 2,
+        hazmat > 0,
+        detention > 0,
+        vehicle > 0,
+    ]
+    choices = [5, 4, 1, 2]
+    df["accessorial_type"] = np.select(conditions, choices, default=0).astype(int)
+
+    dist = df["accessorial_type"].value_counts().sort_index()
+    print(f"  LTL targets derived — type dist: { {k: int(v) for k, v in dist.items()} }")
+    return df
+
+
 def load_data_from_csv(csv_path: str, max_rows: int = None) -> pd.DataFrame:
     """Load training data from a local CSV file instead of Teradata."""
     path = Path(csv_path)
@@ -135,6 +187,9 @@ def load_data_from_csv(csv_path: str, max_rows: int = None) -> pd.DataFrame:
     if max_rows:
         df = df.iloc[:max_rows]
     print(f"Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
+    if REGRESSION_TARGET not in df.columns:
+        print("  accessorial_risk_score missing — deriving from C/ columns (LTL mode)")
+        df = _compute_ltl_targets(df)
     return df
 
 
