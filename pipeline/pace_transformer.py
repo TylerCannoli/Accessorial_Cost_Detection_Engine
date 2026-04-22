@@ -404,6 +404,16 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     # Detect LTL mode (enriched_ltl_training.csv has C/ columns, no insp_year)
     ltl_mode = DATE_COLUMN not in df.columns
     if ltl_mode:
+        # 24k rows can't support a 791k-param model; shrink to ~100k to prevent overfitting
+        hp.n_layers      = 2
+        hp.n_heads       = 4
+        hp.token_dim     = 64
+        hp.attn_dropout  = 0.3
+        hp.ffn_dropout   = 0.4
+        hp.weight_decay  = 1e-3
+        hp.batch_size    = 512
+        print("  LTL mode: reduced architecture (2 layers, dim=64) for 24k-row dataset")
+    if ltl_mode:
         print("  LTL mode: using LTL column lists and pickup_year for split")
         active_date_col  = LTL_DATE_COLUMN
         active_cat_list  = LTL_CATEGORICAL_COLUMNS
@@ -461,22 +471,8 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=len(cont_cols))
     reg_crit = nn.MSELoss()
     if ltl_mode:
-        # Regression MSE on 0-100 scale ≈ 2500, CrossEntropy ≈ 1-2; even 0.005 scale leaves
-        # regression at 91% of total loss, starving the classification head. Use 0.0 for
-        # pure classification in LTL mode — the regression head exists but gets no gradient.
-        reg_loss_scale = 0.0
-        cls_counts = np.bincount(df_train[MULTICLASS_TARGET].values.astype(int), minlength=N_CLASSES)
-        n_total = int(cls_counts.sum())
-        n_active = int((cls_counts > 0).sum())
-        # Sqrt weighting: gentler than inverse-frequency; prevents single-class collapse
-        raw_w = np.where(cls_counts > 0,
-                         np.sqrt(n_total / (n_active * np.maximum(cls_counts, 1))), 0.0)
-        min_nz = raw_w[raw_w > 0].min()
-        raw_w  = np.clip(raw_w, 0.0, min_nz * 5)   # cap at 5x the most common class weight
-        raw_w  = raw_w / raw_w.sum() * n_active
-        cls_weights = torch.tensor(raw_w, dtype=torch.float32)
-        print(f"  Class weights (LTL, sqrt/5x): { {i: f'{w:.3f}' for i, w in enumerate(cls_weights.tolist())} }")
-        cls_crit = nn.CrossEntropyLoss(weight=cls_weights.to(device))
+        reg_loss_scale = 0.0   # pure classification; regression head gets no gradient
+        cls_crit = nn.CrossEntropyLoss()  # unweighted: let model learn natural distribution
     else:
         reg_loss_scale = 1.0
         cls_crit = nn.CrossEntropyLoss()
