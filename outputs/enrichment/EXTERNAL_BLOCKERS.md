@@ -66,13 +66,21 @@ time-of-day, commodity class).
 **Still external:** USPS DPV (Delivery Point Validation) would disambiguate rural-
 route-vs-commercial more precisely but requires a USPS API Certified Mailer account.
 
-## 5. OSRM road distance — IN PROGRESS
+## 5. OSRM road distance — RESOLVED
 
-**Status:** WSL Ubuntu 24.04 + Docker confirmed. `us-latest.osm.pbf` (11.85 GB)
-downloading from Geofabrik (~25% at 2026-04-19 12:14 CT). Once complete:
-1. `bash setup_osrm.sh prep` — extract/partition/customize (~30-60 min, 8-12 GB RAM).
-2. `bash setup_osrm.sh serve` — start server on port 5000.
-3. `python osrm_batch_distance.py` — 6,462 O/D pairs at ~50 req/s ≈ 2 min.
+**Status (2026-04-22):** Pivoted from local OSRM build to public demo server
+`router.project-osrm.org` after full-US PBF extract OOM'd on 32 GB Windows box
+(WSL2 capped at 24 GB) and GPU cluster had no Docker/Apptainer/sudo.
 
-Outputs `od_zip_pairs_osrm.csv` with `osrm_miles` and `osrm_minutes`. Then merge
-into training data alongside `haversine_miles`.
+`osrm_batch_distance.py` ran 6,357 pairs at ~1.1 s/req (conservative rate limit),
+total wall time ~2h. Result: **6,328 / 6,462 pairs resolved (97.9%)**.
+`merge_osrm.py` joined onto training: **24,210 / 24,510 rows (98.78%)** have real
+OSRM miles/minutes. The 300 misses are Canadian postal codes and other invalid
+ZIPs that also fail haversine. Road/haversine ratio median = 1.175, p95 = 1.298
+(textbook CONUS detour factor).
+
+Artifacts:
+- `od_zip_pairs_osrm.csv` — raw OSRM output (6,462 pairs).
+- `enriched_ltl_training.csv` — joined columns `osrm_miles`, `osrm_minutes`,
+  `osrm_imputed` (0 for real, 1 for haversine-fallback; currently all 0 since
+  training file lacks haversine column — tree models handle NaN natively).
