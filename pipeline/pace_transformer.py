@@ -339,7 +339,7 @@ def build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=None):
 
 
 # ── Training loop ─────────────────────────────────────────────────
-def train_one_epoch(model, loader, reg_crit, cls_crit, optimizer, device):
+def train_one_epoch(model, loader, reg_crit, cls_crit, optimizer, device, reg_loss_scale=1.0):
     model.train()
     total_loss, n = 0, 0
     for cat, cont, reg_t, cls_t in loader:
@@ -347,7 +347,7 @@ def train_one_epoch(model, loader, reg_crit, cls_crit, optimizer, device):
         reg_t, cls_t = reg_t.to(device), cls_t.to(device)
         optimizer.zero_grad()
         reg_out, cls_out = model(cat, cont)
-        loss = reg_crit(reg_out, reg_t) + cls_crit(cls_out, cls_t)
+        loss = reg_loss_scale * reg_crit(reg_out, reg_t) + cls_crit(cls_out, cls_t)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -358,7 +358,7 @@ def train_one_epoch(model, loader, reg_crit, cls_crit, optimizer, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, reg_crit, cls_crit, device):
+def evaluate(model, loader, reg_crit, cls_crit, device, reg_loss_scale=1.0):
     model.eval()
     total_loss, n = 0, 0
     reg_preds, reg_trues, cls_preds, cls_trues = [], [], [], []
@@ -366,7 +366,7 @@ def evaluate(model, loader, reg_crit, cls_crit, device):
         cat, cont = cat.to(device), cont.to(device)
         reg_t, cls_t = reg_t.to(device), cls_t.to(device)
         reg_out, cls_out = model(cat, cont)
-        loss = reg_crit(reg_out, reg_t) + cls_crit(cls_out, cls_t)
+        loss = reg_loss_scale * reg_crit(reg_out, reg_t) + cls_crit(cls_out, cls_t)
         total_loss += loss.item()
         n += 1
         reg_preds.append(reg_out.cpu().numpy())
@@ -404,16 +404,15 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     # Detect LTL mode (enriched_ltl_training.csv has C/ columns, no insp_year)
     ltl_mode = DATE_COLUMN not in df.columns
     if ltl_mode:
-        print("  LTL mode: using LTL column lists, Cost as regression target, pickup_year for split")
+        print("  LTL mode: using LTL column lists and pickup_year for split")
         active_date_col  = LTL_DATE_COLUMN
         active_cat_list  = LTL_CATEGORICAL_COLUMNS
         active_cont_list = LTL_CONTINUOUS_COLUMNS
-        active_reg_target = LTL_REGRESSION_TARGET
     else:
         active_date_col  = DATE_COLUMN
         active_cat_list  = CATEGORICAL_COLUMNS
         active_cont_list = CONTINUOUS_COLUMNS
-        active_reg_target = REGRESSION_TARGET
+    active_reg_target = REGRESSION_TARGET  # accessorial_risk_score in both modes
 
     print("\n[2/6] Normalizing regression target...")
     max_score = df[active_reg_target].max()
@@ -462,12 +461,20 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=len(cont_cols))
     reg_crit = nn.MSELoss()
     if ltl_mode:
+        # MSE on 0-100 scores is ~200x larger than CrossEntropy; scale it down so
+        # classification is not starved of gradient.
+        reg_loss_scale = 0.005
         cls_counts = np.bincount(df_train[MULTICLASS_TARGET].values.astype(int), minlength=N_CLASSES)
-        cls_weights = torch.tensor(1.0 / np.maximum(cls_counts, 1), dtype=torch.float32)
-        cls_weights = cls_weights / cls_weights.sum() * N_CLASSES
-        print(f"  Class weights (LTL): { {i: f'{w:.3f}' for i, w in enumerate(cls_weights.tolist())} }")
+        raw_w = np.where(cls_counts > 0, 1.0 / np.maximum(cls_counts, 1), 0.0)
+        min_nz = raw_w[raw_w > 0].min()
+        raw_w  = np.clip(raw_w, 0.0, min_nz * 8)   # cap at 8x the most common class weight
+        n_active = int((cls_counts > 0).sum())
+        raw_w  = raw_w / raw_w.sum() * n_active     # renormalize to sum = n_active classes
+        cls_weights = torch.tensor(raw_w, dtype=torch.float32)
+        print(f"  Class weights (LTL, capped 8x): { {i: f'{w:.3f}' for i, w in enumerate(cls_weights.tolist())} }")
         cls_crit = nn.CrossEntropyLoss(weight=cls_weights.to(device))
     else:
+        reg_loss_scale = 1.0
         cls_crit = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=hp.learning_rate,
                                   weight_decay=hp.weight_decay)
@@ -482,9 +489,9 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     for epoch in range(1, hp.epochs + 1):
         t0 = time.time()
         train_loss = train_one_epoch(model, train_loader, reg_crit, cls_crit,
-                                     optimizer, device)
+                                     optimizer, device, reg_loss_scale)
         val_loss, rp, rt, cp, ct = evaluate(model, test_loader, reg_crit,
-                                             cls_crit, device)
+                                             cls_crit, device, reg_loss_scale)
         scheduler.step(val_loss)
         rmse   = np.sqrt(mean_squared_error(rt, rp))
         r2     = r2_score(rt, rp)
@@ -514,13 +521,12 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
 
     # Save preprocessing artifacts for inference.py
     artifacts = {
-        "cat_encoder":       cat_encoder,
-        "scaler":            scaler,
-        "cat_cols":          cat_cols,
-        "cont_cols":         cont_cols,
-        "reg_target":        active_reg_target,
-        "reg_target_max":    float(max_score),
-        "ltl_mode":          ltl_mode,
+        "cat_encoder":    cat_encoder,
+        "scaler":         scaler,
+        "cat_cols":       cat_cols,
+        "cont_cols":      cont_cols,
+        "risk_score_max": float(max_score),
+        "ltl_mode":       ltl_mode,
     }
     with open(MODEL_ARTIFACTS_PATH, "wb") as f:
         pickle.dump(artifacts, f)
