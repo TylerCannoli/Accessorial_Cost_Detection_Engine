@@ -216,6 +216,7 @@ CONTINUOUS_COLUMNS_V2 = (
 # Column names match outputs/enrichment/build_enriched_ltl.py output exactly.
 
 LTL_DATE_COLUMN = "pickup_year"  # derived from pickup_dt at load time
+LTL_REGRESSION_TARGET = "Cost"  # actual shipment dollar cost; better regression signal than derived score
 
 LTL_CONTINUOUS_COLUMNS = [
     # Shipment basics

@@ -32,7 +32,7 @@ from pipeline.config import (
     TD_HOST, TD_USERNAME, TD_PASSWORD, TD_DATABASE, TD_VIEW,
     ID_COLUMN, DATE_COLUMN, REGRESSION_TARGET, MULTICLASS_TARGET,
     N_CLASSES, CONTINUOUS_COLUMNS_V2 as CONTINUOUS_COLUMNS, CATEGORICAL_COLUMNS,
-    LTL_DATE_COLUMN, LTL_CONTINUOUS_COLUMNS, LTL_CATEGORICAL_COLUMNS,
+    LTL_DATE_COLUMN, LTL_REGRESSION_TARGET, LTL_CONTINUOUS_COLUMNS, LTL_CATEGORICAL_COLUMNS,
     MODEL_WEIGHTS_PATH, MODEL_ARTIFACTS_PATH, RESULTS_DIR, CHUNK_SIZE, NUM_THREADS,
     CHARGE_TYPE_LABELS,
 )
@@ -404,18 +404,20 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     # Detect LTL mode (enriched_ltl_training.csv has C/ columns, no insp_year)
     ltl_mode = DATE_COLUMN not in df.columns
     if ltl_mode:
-        print("  LTL mode: using LTL column lists and pickup_year for split")
+        print("  LTL mode: using LTL column lists, Cost as regression target, pickup_year for split")
         active_date_col  = LTL_DATE_COLUMN
         active_cat_list  = LTL_CATEGORICAL_COLUMNS
         active_cont_list = LTL_CONTINUOUS_COLUMNS
+        active_reg_target = LTL_REGRESSION_TARGET
     else:
         active_date_col  = DATE_COLUMN
         active_cat_list  = CATEGORICAL_COLUMNS
         active_cont_list = CONTINUOUS_COLUMNS
+        active_reg_target = REGRESSION_TARGET
 
     print("\n[2/6] Normalizing regression target...")
-    max_score = df[REGRESSION_TARGET].max()
-    df[REGRESSION_TARGET] = (df[REGRESSION_TARGET] / max_score * 100).astype(np.float32)
+    max_score = df[active_reg_target].max()
+    df[active_reg_target] = (df[active_reg_target] / max_score * 100).astype(np.float32)
 
     print("\n[3/6] Train/test split...")
     max_year = df[active_date_col].max()
@@ -444,7 +446,7 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
             cont_data = scaler.fit_transform(cont_data)
         else:
             cont_data = scaler.transform(cont_data)
-        reg_t = frame[REGRESSION_TARGET].values.astype(np.float32)
+        reg_t = frame[active_reg_target].values.astype(np.float32)
         cls_t = frame[MULTICLASS_TARGET].values.astype(np.int64)
         return PACEDataset(cat_data, cont_data, reg_t, cls_t)
 
@@ -459,7 +461,14 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     print("\n[5/6] Training...")
     model    = build_model(hp, cat_encoder, cat_cols, device, n_gpus, n_continuous=len(cont_cols))
     reg_crit = nn.MSELoss()
-    cls_crit = nn.CrossEntropyLoss()
+    if ltl_mode:
+        cls_counts = np.bincount(df_train[MULTICLASS_TARGET].values.astype(int), minlength=N_CLASSES)
+        cls_weights = torch.tensor(1.0 / np.maximum(cls_counts, 1), dtype=torch.float32)
+        cls_weights = cls_weights / cls_weights.sum() * N_CLASSES
+        print(f"  Class weights (LTL): { {i: f'{w:.3f}' for i, w in enumerate(cls_weights.tolist())} }")
+        cls_crit = nn.CrossEntropyLoss(weight=cls_weights.to(device))
+    else:
+        cls_crit = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=hp.learning_rate,
                                   weight_decay=hp.weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -505,11 +514,13 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
 
     # Save preprocessing artifacts for inference.py
     artifacts = {
-        "cat_encoder":    cat_encoder,
-        "scaler":         scaler,
-        "cat_cols":       cat_cols,
-        "cont_cols":      cont_cols,
-        "risk_score_max": float(max_score),
+        "cat_encoder":       cat_encoder,
+        "scaler":            scaler,
+        "cat_cols":          cat_cols,
+        "cont_cols":         cont_cols,
+        "reg_target":        active_reg_target,
+        "reg_target_max":    float(max_score),
+        "ltl_mode":          ltl_mode,
     }
     with open(MODEL_ARTIFACTS_PATH, "wb") as f:
         pickle.dump(artifacts, f)
@@ -547,8 +558,9 @@ def run_pipeline(csv_path: str = None, max_rows: int = None):
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(rt[:5000], rp[:5000], alpha=0.3, s=5)
     ax.plot([0, 100], [0, 100], "r--")
-    ax.set(xlabel="True Risk Score", ylabel="Predicted Risk Score",
-           title="PACE Risk Score: Predicted vs Actual")
+    reg_label = "Cost (normalized)" if ltl_mode else "Risk Score"
+    ax.set(xlabel=f"True {reg_label}", ylabel=f"Predicted {reg_label}",
+           title=f"PACE {reg_label}: Predicted vs Actual")
     plt.tight_layout()
     fig.savefig(output_dir / "regression_scatter.png", dpi=150)
     plt.close(fig)
