@@ -645,11 +645,25 @@ def inject_persistent_nav_hides() -> None:
         }}
       }});
     }}
+    function renameLandingEntry() {{
+      var nav = doc.querySelector('[data-testid="stSidebarNav"]');
+      if (!nav) return;
+      nav.querySelectorAll("a[href]").forEach(function (a) {{
+        var h = (a.getAttribute("href") || "").replace(/\/$/, "");
+        if (h === "" || h === "/" || h.endsWith(appWin.location.origin)) {{
+          var spans = a.querySelectorAll("span");
+          spans.forEach(function (s) {{
+            if (s.textContent.trim().toLowerCase() === "app") s.textContent = "P.A.C.E.";
+          }});
+        }}
+      }});
+    }}
     function applySidebarNavHiding() {{
       ensureSidebarNavExpanded();
       hideFlowNavLinks();
       hideAdminNavLinks();
       hideSidebarViewToggle();
+      renameLandingEntry();
     }}
     applySidebarNavHiding();
     if (!appWin.__paceSidebarNavObs) {{

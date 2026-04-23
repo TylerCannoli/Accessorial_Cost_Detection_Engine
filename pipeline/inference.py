@@ -355,9 +355,10 @@ class PACEInference:
                 password=TD_PASSWORD, database=TD_DATABASE,
             )
             df = pd.read_sql(
-                f"SELECT * FROM {TD_DATABASE}.pace_training_v "  # nosec B608
-                f"WHERE dot_number = {dot_number} SAMPLE 1",
+                f"SELECT * FROM {TD_DATABASE}.pace_training_v "
+                "WHERE dot_number = ? SAMPLE 1",
                 conn,
+                params=[dot_number],
             )
             conn.close()
             if df.empty:

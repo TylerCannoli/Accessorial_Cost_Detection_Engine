@@ -5,7 +5,7 @@ Reads credentials from .env (local) or st.secrets (Streamlit Cloud).
 """
 import os
 import hashlib
-from typing import Optional, Tuple
+from typing import Optional, Tuple       # ← added from teammate (used by several functions)
 
 import pandas as pd
 import streamlit as st
@@ -27,10 +27,11 @@ def _get_secret(key: str) -> str:
     """Read a secret from st.secrets (cloud) or os.environ (local)."""
     try:
         return st.secrets["azure_sql"][key]
-    except Exception:
+    except Exception:                    # ← teammate's broader except (safer than KeyError only)
         return os.getenv(key, "")
 
 
+# ── Added from teammate ───────────────────────────────────────────────────────
 def get_db_config_status() -> Tuple[bool, str]:
     """Check whether all required DB env vars are present."""
     if not PYMSSQL_AVAILABLE:
@@ -80,7 +81,7 @@ def get_connection():
                 password=password,
                 database=database,
                 port=1433,
-                login_timeout=30,
+                login_timeout=20,
                 tds_version="7.4",
             )
             # Smoke-test: ensure the connection is usable
@@ -89,9 +90,7 @@ def get_connection():
         except Exception as e:
             last_err = e
             if attempt < 3:
-                # Azure SQL serverless can take 20-60 s to wake from idle;
-                # 12 s between retries gives it enough time across 3 attempts.
-                time.sleep(12)
+                time.sleep(2)
 
     # All retries exhausted — fail silently, fallback to demo data
     return None
@@ -116,6 +115,7 @@ def get_connection_safe():
         return get_connection()
 
 
+# ── Added from teammate ───────────────────────────────────────────────────────
 def test_connection() -> Tuple[bool, str]:
     """Create a fresh (uncached) connection to verify credentials are working."""
     ok, reason = get_db_config_status()
@@ -129,8 +129,8 @@ def test_connection() -> Tuple[bool, str]:
             password=_get_secret("DB_PASSWORD"),
             database=_get_secret("DB_DATABASE"),
             port=1433,
-            login_timeout=30,   # Azure serverless needs 20-60 s to wake
-            timeout=45,
+            login_timeout=10,
+            timeout=15,
             tds_version="7.4",
         )
         cur = conn.cursor()
@@ -142,6 +142,7 @@ def test_connection() -> Tuple[bool, str]:
         return False, f"Database connection failed: {e}"
 
 
+# ── Added from teammate ───────────────────────────────────────────────────────
 def clear_db_cache():
     """Clear all Streamlit data and resource caches (used after user mutations)."""
     try:
@@ -304,30 +305,6 @@ def get_carriers(_conn) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def update_carrier_dot_number(_conn, carrier_name: str, dot_number: str) -> Tuple[bool, str]:
-    """
-    Set or clear the dot_number for a carrier row identified by carrier_name.
-    dot_number should be a non-empty string like '72011', or None/'' to clear it.
-    Returns (success, message).
-    """
-    if _conn is None:
-        return False, "No database connection."
-    dot_val = str(dot_number).strip() if dot_number and str(dot_number).strip() else None
-    try:
-        cursor = _conn.cursor()
-        cursor.execute(
-            "UPDATE Carriers SET dot_number = %s WHERE carrier_name = %s",
-            (dot_val, carrier_name),
-        )
-        if cursor.rowcount == 0:
-            return False, f"No carrier found with name '{carrier_name}'."
-        _conn.commit()
-        clear_db_cache()
-        return True, f"DOT number updated for '{carrier_name}'."
-    except Exception as e:
-        return False, str(e)
-
-
 @st.cache_data(ttl=300)
 def get_facilities(_conn) -> pd.DataFrame:
     """Fetch all facility records."""
@@ -348,7 +325,7 @@ def verify_pace_user(_conn, username: str, password: str) -> Optional[str]:
     if _conn is None:
         return None
 
-    # Case-insensitive login — normalize before hash comparison
+    # ← teammate's normalization added: case-insensitive login
     username = username.lower().strip()
     pw_hash  = hashlib.sha256(password.encode()).hexdigest()
 
@@ -360,9 +337,8 @@ def verify_pace_user(_conn, username: str, password: str) -> Optional[str]:
         )
         if not row.empty:
             return str(row.iloc[0]["role"])
-    except Exception as e:
-        import logging
-        logging.warning("PACE: verify_pace_user query failed: %s", e)
+    except Exception:
+        pass
     return None
 
 
@@ -387,6 +363,7 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
     if _conn is None:
         return False, "No database connection."
 
+    # ← teammate: normalize + validate inputs
     username = str(username).strip().lower()
     role     = str(role).strip().lower()
 
@@ -399,6 +376,7 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
     pw_hash = hashlib.sha256(password.encode()).hexdigest()
 
     try:
+        # ← teammate: duplicate-user check before insert
         existing = pd.read_sql(
             "SELECT username FROM PaceUsers WHERE LOWER(username) = %s",
             _conn,
@@ -413,7 +391,7 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
             (username, pw_hash, role),
         )
         _conn.commit()
-        clear_db_cache()
+        clear_db_cache()                 # ← teammate: refresh cache after mutation
         return True, f"User '{username}' created successfully."
     except Exception as e:
         return False, str(e)
@@ -422,7 +400,7 @@ def create_pace_user(_conn, username: str, password: str, role: str) -> Tuple[bo
 def delete_pace_user(
     _conn,
     username: str,
-    current_username: Optional[str] = None,
+    current_username: Optional[str] = None,   # ← teammate: self-delete guard
 ) -> Tuple[bool, str]:
     """Delete a user from PaceUsers by username."""
     if _conn is None:
@@ -431,6 +409,7 @@ def delete_pace_user(
     username         = str(username).strip().lower()
     current_username = (current_username or "").strip().lower()
 
+    # ← teammate: prevent admin from deleting their own account
     if username == current_username:
         return False, "You cannot delete the currently logged-in admin."
 
@@ -438,7 +417,7 @@ def delete_pace_user(
         cursor = _conn.cursor()
         cursor.execute("DELETE FROM PaceUsers WHERE LOWER(username) = %s", (username,))
         _conn.commit()
-        clear_db_cache()
+        clear_db_cache()                 # ← teammate: refresh cache after mutation
         return True, f"User '{username}' deleted."
     except Exception as e:
         return False, str(e)
@@ -448,7 +427,7 @@ def delete_pace_user(
 # FALLBACK / LOAD HELPERS
 # =============================================================================
 
-def load_shipments_from_teradata(row_limit: int = 50000) -> pd.DataFrame:
+def load_shipments_from_teradata(row_limit: int = 10000) -> pd.DataFrame:
     """
     Pull records from the Teradata training view and reshape them into the
     dashboard schema (same column names as get_shipments()).
@@ -477,11 +456,6 @@ def load_shipments_from_teradata(row_limit: int = 50000) -> pd.DataFrame:
                 carrier_phy_state,
                 sms_nbr_power_unit,
                 carrier_mcs150_mileage,
-                carrier_power_units,
-                carrier_total_drivers,
-                carrier_carrier_operation,
-                carrier_status_code,
-                carrier_fleetsize,
                 accessorial_risk_score,
                 accessorial_type
             FROM {td_db}.{td_view}
@@ -538,49 +512,7 @@ def load_shipments_from_teradata(row_limit: int = 50000) -> pd.DataFrame:
 
         return df
 
-    except Exception as e:
-        import logging
-        logging.warning("PACE: load_shipments_from_teradata failed: %s", e)
-        return pd.DataFrame()
-
-
-def load_teradata_for_inference(row_limit: int = 5000) -> pd.DataFrame:
-    """
-    Pull full-schema PACE records from Teradata for live inference without requiring
-    a file upload.  Returns all columns from pace_training_v so the inference engine
-    can score them directly via predict_dataframe().
-
-    Falls back to an empty DataFrame if Teradata is unavailable; the caller handles
-    the fallback gracefully.
-    """
-    try:
-        td_host = os.getenv("TD_HOST", "")
-        td_user = os.getenv("TD_USERNAME", "")
-        td_pass = os.getenv("TD_PASSWORD", "")
-        td_db   = os.getenv("TD_DATABASE", "CTGAN")
-
-        if not td_host:
-            return pd.DataFrame()
-
-        import teradatasql  # cluster-only dependency; imported lazily
-        conn = teradatasql.connect(
-            host=td_host, user=td_user,
-            password=td_pass, database=td_db,
-        )
-
-        # pace_training_v contains all PACE schema columns + computed labels
-        query = f"""
-            SELECT TOP {row_limit} *
-            FROM {td_db}.pace_training_v
-            ORDER BY insp_year DESC, insp_month DESC
-        """  # nosec B608
-        df = pd.read_sql(query, conn)
-        conn.close()
-        return df
-
-    except Exception as e:
-        import logging
-        logging.warning("PACE: load_teradata_for_inference failed: %s", e)
+    except Exception:
         return pd.DataFrame()
 
 
@@ -593,13 +525,7 @@ def load_shipments_with_fallback(n_mock: int = 300) -> pd.DataFrame:
     """
     # ── Tier 1: Azure SQL ─────────────────────────────────────────────
     conn = get_connection_safe()
-    df = get_shipments(conn) if conn is not None else pd.DataFrame()
-    # If Azure is waking from idle/serverless pause, first query can return empty.
-    # Retry once after cache clear before falling back.
-    if conn is not None and df.empty:
-        clear_db_cache()
-        conn = get_connection_safe()
-        df = get_shipments(conn) if conn is not None else pd.DataFrame()
+    df   = get_shipments(conn) if conn is not None else pd.DataFrame()
     if not df.empty:
         return df
 
@@ -615,14 +541,14 @@ def load_shipments_with_fallback(n_mock: int = 300) -> pd.DataFrame:
     # ── Tier 3: Mock data ─────────────────────────────────────────────
     from utils.mock_data import generate_mock_shipments
     df = generate_mock_shipments(n_mock)
-    # Mock data outputs risk_score in 0-1 range; normalize to 0-100 to match
-    # the DB schema so dashboard metrics display correctly (e.g. "60%" not "0.6%")
+    # Normalize risk_score to 0-100 (mock generates 0-1)
     if "risk_score" in df.columns and df["risk_score"].max() <= 1.0:
-        df["risk_score"] = (df["risk_score"] * 100).round(1)
+        df["risk_score"] = (df["risk_score"] * 100).round(2)
     st.info("Live database unavailable — showing demo data.", icon="ℹ️")
     return df
 
 
+# ── Added from teammate ───────────────────────────────────────────────────────
 def load_accessorial_with_fallback(row_limit: int = 2000) -> pd.DataFrame:
     """
     Load accessorial charges with fallback to mock data if Azure is unavailable.
@@ -631,10 +557,6 @@ def load_accessorial_with_fallback(row_limit: int = 2000) -> pd.DataFrame:
 
     if conn is not None:
         df = get_shipments_with_charges(conn, row_limit=row_limit)
-        if df.empty:
-            clear_db_cache()
-            conn = get_connection_safe()
-            df = get_shipments_with_charges(conn, row_limit=row_limit) if conn is not None else pd.DataFrame()
         if not df.empty:
             return df
 
@@ -656,9 +578,7 @@ def load_accessorial_with_fallback(row_limit: int = 2000) -> pd.DataFrame:
             df["total_cost_usd"] = base + acc
 
         return df
-    except Exception as e:
-        import logging
-        logging.warning("PACE: load_accessorial_with_fallback mock-data path failed: %s", e)
+    except Exception:
         return pd.DataFrame()
 
 
@@ -704,9 +624,8 @@ def ensure_model_results_table(_conn) -> None:
         cursor = _conn.cursor()
         cursor.execute(ddl)
         _conn.commit()
-    except Exception as e:
-        import logging
-        logging.warning("PACE: ensure_model_results_table DDL failed: %s", e)
+    except Exception:
+        pass
 
 
 def write_model_result(

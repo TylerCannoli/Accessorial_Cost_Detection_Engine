@@ -451,7 +451,7 @@ st.markdown("""
 <div class="g3"></div>
 
 <nav class="pace-nav">
-  <span class="pace-logo">P · A · C · E</span>
+  <a class="pace-logo" href="/" style="text-decoration:none;color:inherit;">P · A · C · E</a>
   <div class="pace-nav-links">
     <a class="pace-nav-link" href="#">Platform</a>
     <a class="pace-nav-link" href="#">Features</a>
@@ -494,7 +494,7 @@ st.markdown("""
       They're <strong>entirely predictable</strong> with the right system.
     </p>
     <div class="pace-hero-btns">
-      <button class="pace-btn-outline">SEE THE PLATFORM</button>
+      <a class="pace-btn-outline" href="/Login" style="text-decoration:none;">SEE THE PLATFORM</a>
     </div>
   </div>
   <div class="pace-stats-col">

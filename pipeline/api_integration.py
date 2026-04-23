@@ -6,6 +6,7 @@ Fetches live data from all relevant APIs to enrich inference requests
 with real-time signals before feeding into the FT-Transformer.
 """
 
+import os
 import requests
 import pandas as pd
 import numpy as np
@@ -15,9 +16,9 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ── API Keys ──────────────────────────────────────────────────────
-FRED_API_KEY = "a9894999d90e9f5d08ebd26fe633927f"
-EIA_API_KEY  = "m0L8lnt78ncuKxNy9XaLTU0RqyMeMhchq9wDyLb2"
-OWM_API_KEY  = "d4426e1b18fe884f2fc25089952d8d3c"
+FRED_API_KEY = os.getenv("FRED_API_KEY", "")
+EIA_API_KEY  = os.getenv("EIA_API_KEY", "")
+OWM_API_KEY  = os.getenv("OWM_API_KEY", "")
 
 # ── Base URLs ─────────────────────────────────────────────────────
 FRED_BASE_URL  = "https://api.stlouisfed.org/fred/series/observations"
